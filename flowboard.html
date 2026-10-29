@@ -271,6 +271,21 @@ a.chip:hover{border-color:var(--accent)}
 .tm-main{flex:3;padding:6px 22px 16px;min-width:0}
 .tm-side{flex:2;padding:6px 18px 16px;background:var(--cell);min-width:230px}
 .tm-side select,.tm-side input{width:100%}
+.due-row{display:flex;gap:6px;position:relative}
+.due-row #t-due-date{flex:3;min-width:0}.due-row #t-due-time{flex:2;min-width:0}
+.due-row button{flex:0 0 auto}
+.due-row input.invalid{border-color:var(--danger)}
+.clock-pop{position:absolute;top:calc(100% + 6px);right:0;z-index:60;width:248px;padding:12px;background:var(--panel);color:var(--text);border:1px solid var(--border);border-radius:14px;box-shadow:0 8px 24px rgba(0,0,0,.22)}
+.clock-head{display:flex;justify-content:center;align-items:center;gap:2px;font-size:30px;font-variant-numeric:tabular-nums;margin-bottom:10px}
+.clock-head button{font:inherit;padding:2px 8px;border:0;border-radius:8px;background:var(--chip);color:var(--muted);cursor:pointer}
+.clock-head button.on{background:color-mix(in srgb,var(--accent) 22%,var(--panel));color:var(--text)}
+.clock-dial{position:relative;width:224px;height:224px;border-radius:50%;background:var(--cell);touch-action:none;user-select:none;cursor:pointer}
+.clock-dial svg{position:absolute;inset:0;pointer-events:none}
+.clock-dial .num{position:absolute;width:30px;height:30px;margin:-15px 0 0 -15px;display:flex;align-items:center;justify-content:center;border-radius:50%;font-size:14px;pointer-events:none;font-variant-numeric:tabular-nums}
+.clock-dial .num.inner{font-size:12px;color:var(--muted)}
+.clock-dial .num.sel{color:var(--accent-text)}
+.clock-foot{display:flex;justify-content:flex-end;gap:6px;margin-top:10px}
+.due-row .due-pick{position:absolute;right:0;bottom:0;width:1px;height:1px;opacity:0;pointer-events:none;border:0;padding:0}
 .flabel{font-size:11px;color:var(--muted);font-weight:700;text-transform:uppercase;letter-spacing:.4px;margin:12px 0 4px;display:block}
 .tm-grid2{display:grid;grid-template-columns:1fr 1fr;gap:0 10px}
 .task-modal .actions{padding:12px 22px;border-top:1px solid var(--border);margin-top:0;flex:none;position:sticky;bottom:0;background:var(--panel);z-index:2}
@@ -636,7 +651,15 @@ kbd{background:var(--chip);border:1px solid var(--border);border-radius:4px;padd
       </div>
     </div>
     <div class="tm-side">
-      <label class="flabel">Due date</label><input type="datetime-local" id="t-due">
+      <label class="flabel">Due date</label>
+      <div class="due-row">
+        <input type="text" id="t-due-date" placeholder="YYYY-MM-DD" maxlength="10" inputmode="numeric" autocomplete="off" aria-label="Due date (YYYY-MM-DD)">
+        <input type="text" id="t-due-time" placeholder="HH:MM" maxlength="5" inputmode="numeric" autocomplete="off" aria-label="Due time (24-hour HH:MM)">
+        <button type="button" id="t-due-clock" title="Pick a time">🕒</button>
+        <button type="button" id="t-due-cal" title="Pick a date">📅</button>
+        <input type="date" id="t-due-pick" class="due-pick" tabindex="-1" aria-hidden="true">
+        <input type="hidden" id="t-due">
+      </div>
       <p class="mut" style="margin:4px 0 0">Card color shifts from green → red as the deadline approaches.</p>
       <button id="t-gcal" style="margin-top:6px;width:100%">📅 Add to Google Calendar now</button>
       <label class="flabel">Column</label><select id="t-col"></select>
@@ -1795,7 +1818,7 @@ function openTask(id,colId,laneId){
   trackFeature(id?'task_open':'task_create');
   $('#t-heading').textContent=id?'Edit task':'New task';
   $('#t-title').value=t.title;$('#t-desc').value=t.desc;setTimeout(autosizeDesc,0);
-  $('#t-due').value=t.due;$('#t-est').value=t.est||'';
+  setDueFields(t.due);$('#t-est').value=t.est||'';
   $('#t-impact').value=t.impact||3;$('#t-effort').value=t.effort||3;
   $('#t-recur').value=t.recur||'';
   $('#t-time').textContent=fmtMin(taskTime(t));$('#t-addtime').value='';
@@ -1924,6 +1947,94 @@ function editSub(t,s,row){
   inp.addEventListener('blur',()=>finish(true));
   span.replaceWith(inp);inp.focus();inp.select();
 }
+/* Due date is typed as ISO date + 24-hour time instead of datetime-local, whose
+   display (dd/mm/yyyy, am/pm) follows the browser locale. #t-due keeps the
+   YYYY-MM-DDTHH:MM value that datetime-local used to produce. */
+function setDueFields(due){
+  const [d,tm]=(due||'').split('T');
+  $('#t-due-date').value=d||'';
+  $('#t-due-time').value=tm&&tm!=='00:00'?tm.slice(0,5):'';
+  $('#t-due-date').classList.remove('invalid');$('#t-due-time').classList.remove('invalid');
+  $('#t-due').value=due||'';
+}
+function syncDueFromFields(){
+  const dEl=$('#t-due-date'),tEl=$('#t-due-time');
+  const d=dEl.value.trim(),tm=tEl.value.trim();
+  const dOk=!d||(/^\d{4}-\d{2}-\d{2}$/.test(d)&&localDateKey(new Date(d+'T00:00').getTime())===d);
+  const tOk=!tm||/^([01]\d|2[0-3]):[0-5]\d$/.test(tm);
+  dEl.classList.toggle('invalid',!dOk);tEl.classList.toggle('invalid',!tOk);
+  if(dOk&&tOk)$('#t-due').value=d?d+'T'+(tm||'00:00'):'';
+}
+/* Accept shorthand on blur: 2026-3-5 → 2026-03-05, 930 / 9:30 → 09:30 */
+function normalizeDueFields(){
+  const dEl=$('#t-due-date'),tEl=$('#t-due-time');
+  const dm=dEl.value.trim().match(/^(\d{4})-(\d{1,2})-(\d{1,2})$/);
+  if(dm)dEl.value=dm[1]+'-'+dm[2].padStart(2,'0')+'-'+dm[3].padStart(2,'0');
+  const tm=tEl.value.trim().match(/^(\d{1,2}):?(\d{2})$/);
+  if(tm)tEl.value=tm[1].padStart(2,'0')+':'+tm[2];
+  syncDueFromFields();
+}
+/* Round 24-hour time picker (Material/Google Calendar style): pick the hour
+   on the dial (outer ring 1–12, inner ring 13–00), then the minute; drag to fine-tune. */
+const clockPicker=(()=>{
+  const R_OUT=88,R_IN=58,C=112;
+  let pop=null,h=0,m=0,mode='h',onPick=null;
+  const pad=n=>String(n).padStart(2,'0');
+  const pos=(i,r)=>{const a=i/12*2*Math.PI;return[C+r*Math.sin(a),C-r*Math.cos(a)];};
+  function render(){
+    const dial=pop.querySelector('.clock-dial');
+    pop.querySelector('[data-m=h]').textContent=pad(h);pop.querySelector('[data-m=m]').textContent=pad(m);
+    pop.querySelector('[data-m=h]').classList.toggle('on',mode==='h');pop.querySelector('[data-m=m]').classList.toggle('on',mode==='m');
+    const [hx,hy]=mode==='h'?pos(h%12,h>=1&&h<=12?R_OUT:R_IN):pos(m/5,R_OUT);
+    let html='<svg width="224" height="224"><circle cx="'+C+'" cy="'+C+'" r="3" fill="var(--accent)"/>'
+      +'<line x1="'+C+'" y1="'+C+'" x2="'+hx+'" y2="'+hy+'" stroke="var(--accent)" stroke-width="2"/>'
+      +'<circle cx="'+hx+'" cy="'+hy+'" r="16" fill="var(--accent)"/></svg>';
+    const num=(label,i,r,cls,sel)=>{const [x,y]=pos(i,r);return'<span class="num '+cls+(sel?' sel':'')+'" style="left:'+x+'px;top:'+y+'px">'+label+'</span>';};
+    if(mode==='h'){
+      for(let i=0;i<12;i++){const ho=i||12,hi=i?i+12:0;html+=num(ho,i,R_OUT,'',h===ho)+num(pad(hi),i,R_IN,'inner',h===hi);}
+    }else for(let i=0;i<12;i++)html+=num(pad(i*5),i,R_OUT,'',m===i*5);
+    dial.innerHTML=html;
+  }
+  function pickAt(e,snap){
+    const r=pop.querySelector('.clock-dial').getBoundingClientRect();
+    const x=e.clientX-r.left-C,y=e.clientY-r.top-C;
+    const a=(Math.atan2(x,-y)/(2*Math.PI)+1)%1;
+    if(mode==='h'){
+      const i=Math.round(a*12)%12,inner=Math.hypot(x,y)<(R_OUT+R_IN)/2;
+      h=inner?(i?i+12:0):(i||12);
+    }else{const step=snap?5:1;m=(Math.round(a*60/step)*step)%60;}
+    render();
+  }
+  function close(){if(pop){pop.remove();pop=null;document.removeEventListener('pointerdown',outside,true);window.removeEventListener('keydown',esc,true);}}
+  function outside(e){if(pop&&!pop.contains(e.target)&&e.target.id!=='t-due-clock')close();}
+  function esc(e){if(e.key==='Escape'){e.preventDefault();e.stopPropagation();close();}}
+  function done(){const f=onPick;const v=pad(h)+':'+pad(m);close();f&&f(v);}
+  function open(anchor,value,cb){
+    close();
+    const t=/^(\d{2}):(\d{2})$/.exec(value||'');const now=new Date();
+    h=t?+t[1]:now.getHours();m=t?+t[2]:Math.round(now.getMinutes()/5)*5%60;mode='h';onPick=cb;
+    pop=el('div',{class:'clock-pop'});
+    pop.innerHTML='<div class="clock-head"><button type="button" data-m="h"></button>:<button type="button" data-m="m"></button></div>'
+      +'<div class="clock-dial"></div><div class="clock-foot"><button type="button" data-a="cancel">Cancel</button><button type="button" class="primary" data-a="ok">OK</button></div>';
+    pop.querySelector('[data-m=h]').onclick=()=>{mode='h';render();};
+    pop.querySelector('[data-m=m]').onclick=()=>{mode='m';render();};
+    pop.querySelector('[data-a=cancel]').onclick=close;
+    pop.querySelector('[data-a=ok]').onclick=done;
+    const dial=pop.querySelector('.clock-dial');
+    let dragging=false,moved=false;
+    dial.addEventListener('pointerdown',e=>{dragging=true;moved=false;dial.setPointerCapture(e.pointerId);pickAt(e,true);});
+    dial.addEventListener('pointermove',e=>{if(dragging){moved=true;pickAt(e,false);}});
+    dial.addEventListener('pointerup',e=>{
+      if(!dragging)return;dragging=false;
+      if(mode==='h'){mode='m';render();}
+      else if(!moved)done();
+    });
+    anchor.append(pop);render();
+    document.addEventListener('pointerdown',outside,true);
+    window.addEventListener('keydown',esc,true);
+  }
+  return{open,close};
+})();
 function saveTaskModal(){
   const t=editing.task;
   t.title=$('#t-title').value.trim()||'Untitled';
@@ -1984,6 +2095,7 @@ function notifyNewAssignees(task,prevAssignees){
 function openOv(sel){closeOv();$(sel).classList.add('open');}
 function closeOv(){
   $$('.overlay.open').forEach(o=>o.classList.remove('open'));
+  clockPicker.close();
   if(typeof flushPendingRemote==='function')flushPendingRemote();
 }
 
@@ -4341,13 +4453,14 @@ function bind(){
     /* iOS sometimes drops click after keyboard dismiss; pointerup still lands on the button */
     if(e.pointerType==='touch'||e.pointerType==='pen')tapSaveTask(e);
   });
-  /* Enter saves & closes when dirty; closes only when unchanged. Capture so datetime-local can't swallow it. */
+  /* Enter saves & closes when dirty; closes only when unchanged. Capture so the due fields can't swallow it. */
   $('#ov-task').addEventListener('keydown',e=>{
     if(e.key!=='Enter'||e.ctrlKey||e.metaKey||e.altKey||!editing)return;
     const t=e.target;if(!t||!t.matches)return;
     if(t.id==='t-desc'||t.id==='t-newsub'||t.tagName==='TEXTAREA'||t.classList.contains('sub-edit'))return;
     if(t.tagName==='BUTTON'&&t.id!=='t-save')return;
     if(t.id==='t-save'){e.preventDefault();e.stopPropagation();saveTaskModal();return;}
+    if(t.id==='t-due-date'||t.id==='t-due-time')normalizeDueFields();
     if(t.matches('input,select')||t.closest('.task-modal')){
       e.preventDefault();e.stopPropagation();commitTaskModal();
     }
@@ -4400,11 +4513,29 @@ function bind(){
   });
   $('#t-desc').addEventListener('input',renderDescLinks);
   $('#t-desc').addEventListener('input',autosizeDesc);
-  $('#t-due').addEventListener('input',()=>{if(editing)updateTaskHead(editing.task);});
-  $('#t-due').addEventListener('change',()=>{
+  ['#t-due-date','#t-due-time'].forEach(sel=>{
+    $(sel).addEventListener('input',()=>{syncDueFromFields();if(editing)updateTaskHead(editing.task);});
+    $(sel).addEventListener('change',()=>{normalizeDueFields();if(editing)updateTaskHead(editing.task);});
+  });
+  $('#t-due-clock').onclick=()=>clockPicker.open($('.due-row'),$('#t-due-time').value,v=>{
+    $('#t-due-time').value=v;
+    if(!$('#t-due-date').value)$('#t-due-date').value=localDateKey(Date.now());
+    syncDueFromFields();
     if(editing)updateTaskHead(editing.task);
-    /* After the date picker commits, put focus on Add/Save so Enter activates it */
     const btn=$('#t-save');if(btn)try{btn.focus();}catch(err){}
+  });
+  $('#t-due-cal').onclick=()=>{
+    const pick=$('#t-due-pick'),d=$('#t-due').value.split('T')[0];
+    pick.value=d||localDateKey(Date.now());
+    try{pick.showPicker();}catch(err){pick.focus();pick.click();}
+  };
+  $('#t-due-pick').addEventListener('change',e=>{
+    if(!e.target.value)return;
+    $('#t-due-date').value=e.target.value;
+    syncDueFromFields();
+    if(editing)updateTaskHead(editing.task);
+    /* After the date picker commits, put focus on the time, then Add/Save */
+    const next=$('#t-due-time').value?$('#t-save'):$('#t-due-time');if(next)try{next.focus();}catch(err){}
   });
   $('#t-col').addEventListener('change',()=>{if(editing)updateTaskHead(editing.task);});
   $('#t-addsub').onclick=addSub;
