@@ -138,6 +138,30 @@ function buildICS(data) {
   return L.join('\r\n');
 }
 
+let iceCache = null;
+async function iceServers() {
+  const now = Date.now();
+  if (iceCache && now - iceCache.at < 50 * 60000) return iceCache.data;
+  let data = { iceServers: [{ urls: ['stun:stun.cloudflare.com:3478', 'stun:stun.l.google.com:19302'] }], turn: false };
+  try { if (process.env.FLOWBOARD_ICE) data = { iceServers: JSON.parse(process.env.FLOWBOARD_ICE), turn: /turns?:/.test(process.env.FLOWBOARD_ICE) }; } catch (e) { console.log('FLOWBOARD_ICE is not valid JSON:', e.message); }
+  const id = process.env.TURN_KEY_ID, tok = process.env.TURN_KEY_API_TOKEN;
+  if (id && tok) {
+    try {
+      const r = await fetch('https://rtc.live.cloudflare.com/v1/turn/keys/' + id + '/credentials/generate-ice-servers', {
+        method: 'POST',
+        headers: { Authorization: 'Bearer ' + tok, 'Content-Type': 'application/json' },
+        body: JSON.stringify({ ttl: 4 * 3600 }),
+      });
+      if (r.ok) {
+        const d = await r.json();
+        if (d && Array.isArray(d.iceServers) && d.iceServers.length) data = { iceServers: d.iceServers, turn: true };
+      } else console.log('Cloudflare TURN credentials failed: HTTP ' + r.status);
+    } catch (e) { console.log('Cloudflare TURN credentials failed:', (e.cause && e.cause.code) || e.message); }
+  }
+  iceCache = { at: now, data };
+  return data;
+}
+
 const server = http.createServer((req, res) => {
   const url = (req.url || '/').split('?')[0];
 
@@ -190,13 +214,16 @@ const server = http.createServer((req, res) => {
     res.writeHead(405); res.end('method not allowed'); return;
   }
 
-  /* ICE servers for WebRTC (same default as worker.mjs; override with env FLOWBOARD_ICE='[{"urls":[...]}]') */
+  /* ICE servers for WebRTC (same as worker.mjs):
+     - default: Cloudflare + Google STUN
+     - env FLOWBOARD_ICE='[{"urls":[...]}]' replaces the list (e.g. own coturn)
+     - env TURN_KEY_ID + TURN_KEY_API_TOKEN: short-lived Cloudflare Realtime TURN credentials, cached ~50 min */
   if (url === '/api/ice' && req.method === 'GET') {
     if (!authorized(req, req.url || '')) { res.writeHead(401, {'Content-Type':'text/plain'}); res.end('unauthorized'); return; }
-    let ice = [{ urls: ['stun:stun.cloudflare.com:3478', 'stun:stun.l.google.com:19302'] }];
-    try { if (process.env.FLOWBOARD_ICE) ice = JSON.parse(process.env.FLOWBOARD_ICE); } catch (e) {}
-    res.writeHead(200, {'Content-Type':'application/json','Cache-Control':'no-store'});
-    res.end(JSON.stringify({ iceServers: ice, turn: false }));
+    iceServers().then(data => {
+      res.writeHead(200, {'Content-Type':'application/json','Cache-Control':'no-store'});
+      res.end(JSON.stringify(data));
+    });
     return;
   }
 
