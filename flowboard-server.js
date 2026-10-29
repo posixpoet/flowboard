@@ -154,7 +154,7 @@ async function iceServers() {
       });
       if (r.ok) {
         const d = await r.json();
-        if (d && Array.isArray(d.iceServers) && d.iceServers.length) data = { iceServers: d.iceServers, turn: true };
+        if (d && Array.isArray(d.iceServers) && d.iceServers.length) { data = { iceServers: d.iceServers, turn: true }; console.log(new Date().toISOString() + ' Cloudflare TURN credentials OK'); }
       } else console.log('Cloudflare TURN credentials failed: HTTP ' + r.status);
     } catch (e) { console.log('Cloudflare TURN credentials failed:', (e.cause && e.cause.code) || e.message); }
   }
@@ -508,4 +508,5 @@ server.listen(PORT, '0.0.0.0', () => {
   console.log('  address can see it. The key is saved in flowboard-key.txt.');
   console.log('  Board data saves to flowboard-data.json in this folder.');
   console.log('  Press Ctrl+C to stop.');
+  console.log('  Calls: ' + (process.env.TURN_KEY_ID && process.env.TURN_KEY_API_TOKEN ? 'Cloudflare TURN enabled' : process.env.FLOWBOARD_ICE ? 'custom ICE list (FLOWBOARD_ICE)' : 'STUN only, no TURN relay'));
 });
