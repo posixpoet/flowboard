@@ -1,5 +1,9 @@
 # Changelog
 
+## Unreleased
+
+- Dates are shown as ISO 8601 (YYYY-MM-DD) and times in 24-hour format (HH:MM) everywhere: due dates on cards, done-column day headers, task "created" date, archive and chat timestamps
+
 ## 1.0.0
 
 First public release.

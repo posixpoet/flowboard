@@ -1000,11 +1000,13 @@ function el(tag,attrs={},...kids){
 function fmtMin(secs){const m=Math.round(secs/60);return Math.floor(m/60)+'h '+(m%60)+'m';}
 function taskTime(t){return (t.timeLog||[]).reduce((a,e)=>a+e.s,0);}
 function findTask(id){for(const b of state.boards){const t=b.tasks.find(x=>x.id===id);if(t)return t;}return null;}
+/* ISO 8601 date (YYYY-MM-DD) and 24-hour time (HH:MM), both in local time, regardless of browser locale */
+function fmtDate(d){return localDateKey(d instanceof Date?d.getTime():d);}
+function fmtTime(d){d=d instanceof Date?d:new Date(d);return String(d.getHours()).padStart(2,'0')+':'+String(d.getMinutes()).padStart(2,'0');}
 function dueInfo(t){
   if(!t.due)return null;
   const d=new Date(t.due),now=new Date();
-  const opts={month:'short',day:'numeric'};
-  const label=d.toLocaleDateString(undefined,opts)+(t.due.includes('T')&&!t.due.endsWith('T00:00')?' '+d.toLocaleTimeString(undefined,{hour:'2-digit',minute:'2-digit'}):'');
+  const label=fmtDate(d)+(t.due.includes('T')&&!t.due.endsWith('T00:00')?' '+fmtTime(d):'');
   let cls='';
   const endOfToday=new Date();endOfToday.setHours(23,59,59,999);
   if(d<now)cls='due-over';
@@ -1058,11 +1060,7 @@ function fmtDoneGroupLabel(key){
   if(key===today)return'Today';
   if(key===yest)return'Yesterday';
   const [y,m,day]=key.split('-').map(Number);
-  const d=new Date(y,m-1,day);
-  const opts=d.getFullYear()===new Date().getFullYear()
-    ?{weekday:'short',month:'short',day:'numeric'}
-    :{weekday:'short',month:'short',day:'numeric',year:'numeric'};
-  return d.toLocaleDateString(undefined,opts);
+  return new Date(y,m-1,day).toLocaleDateString(undefined,{weekday:'short'})+' '+key;
 }
 /* Group done-column tasks by completion day (newest first). Open columns stay ungrouped. */
 function groupByDoneDate(tasks){
@@ -1889,7 +1887,7 @@ function updateTaskHead(t){
   head.style.color=txt;
   $('#t-meta').style.color=cardTextDim();
   const col=board.columns.find(c=>c.id===colId);
-  $('#t-meta').textContent=(col?col.name:'')+(t.createdAt?' · created '+new Date(t.createdAt).toLocaleDateString():'')+(editing&&editing.isNew?' · new task':'');
+  $('#t-meta').textContent=(col?col.name:'')+(t.createdAt?' · created '+fmtDate(t.createdAt):'')+(editing&&editing.isNew?' · new task':'');
 }
 function renderLabelChips(t){
   const w=$('#t-labels');w.innerHTML='';
@@ -2505,8 +2503,8 @@ function linkify(text){
 }
 function fmtChatTime(at){
   const d=new Date(at||0),now=new Date();
-  const hm=d.toLocaleTimeString([],{hour:'2-digit',minute:'2-digit'});
-  return d.toDateString()===now.toDateString()?hm:d.toLocaleDateString([],{day:'numeric',month:'short'})+' '+hm;
+  const hm=fmtTime(d);
+  return d.toDateString()===now.toDateString()?hm:fmtDate(d)+' '+hm;
 }
 function renderChat(){
   const box=$('#cp-msgs');if(!box)return;
@@ -3136,7 +3134,7 @@ function openArchive(){
   board.archive.slice().reverse().forEach(t=>{
     w.append(el('div',{class:'prow'},
       el('span',{class:'nm',text:t.title}),
-      el('span',{class:'mut',text:t.doneAt?new Date(t.doneAt).toLocaleDateString():''}),
+      el('span',{class:'mut',text:t.doneAt?fmtDate(t.doneAt):''}),
       el('button',{text:'Restore',onclick:()=>{board.archive.splice(board.archive.indexOf(t),1);t.colId=board.columns[0].id;t.laneId=board.lanes[0].id;board.tasks.push(t);save();renderBoard();openArchive();}}),
       el('button',{class:'danger',text:'✕',onclick:()=>{if(confirm('Delete forever?')){deleteTaskFiles(t);board.archive.splice(board.archive.indexOf(t),1);save();openArchive();}}})));
   });
