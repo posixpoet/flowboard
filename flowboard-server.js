@@ -60,6 +60,7 @@ function buildPresenceList(map, boardId, scope, pid, guests, master) {
         at: row.at || 0,
         active,
         self: row.principal === pid,
+        inCall: !!(row.inCall && active),
       });
     }
   }
@@ -187,6 +188,16 @@ const server = http.createServer((req, res) => {
       return;
     }
     res.writeHead(405); res.end('method not allowed'); return;
+  }
+
+  /* ICE servers for WebRTC (same default as worker.mjs; override with env FLOWBOARD_ICE='[{"urls":[...]}]') */
+  if (url === '/api/ice' && req.method === 'GET') {
+    if (!authorized(req, req.url || '')) { res.writeHead(401, {'Content-Type':'text/plain'}); res.end('unauthorized'); return; }
+    let ice = [{ urls: ['stun:stun.cloudflare.com:3478', 'stun:stun.l.google.com:19302'] }];
+    try { if (process.env.FLOWBOARD_ICE) ice = JSON.parse(process.env.FLOWBOARD_ICE); } catch (e) {}
+    res.writeHead(200, {'Content-Type':'application/json','Cache-Control':'no-store'});
+    res.end(JSON.stringify({ iceServers: ice, turn: false }));
+    return;
   }
 
   if (url === '/calendar.ics' && req.method === 'GET') {
@@ -318,7 +329,7 @@ const server = http.createServer((req, res) => {
           return;
         }
         let map = prunePresence(loadPresence());
-        map[deviceId] = { id: deviceId, name, boardId, at: Date.now(), principal: pid };
+        map[deviceId] = { id: deviceId, name, boardId, at: Date.now(), principal: pid, inCall: !!(b && b.inCall) };
         savePresence(map);
         const list = buildPresenceList(map, boardId, scope, pid, guests, master);
         res.writeHead(200, {'Content-Type':'application/json'});
@@ -333,6 +344,122 @@ const server = http.createServer((req, res) => {
 
   res.writeHead(404, {'Content-Type':'text/plain'});
   res.end('Not found');
+});
+
+/* ===== board room: chat + WebRTC signalling over WebSocket (/api/call) =====
+   Port of the Board Durable Object room in worker.mjs, zero dependencies (RFC 6455, text frames only). */
+const CALL_MAX_PEERS = 6, ROOM_MAX_SOCKETS = 24, CHAT_KEEP = 150, CHAT_MAX_CHARS = 1000, WS_MAX = 65536;
+const CHAT_FILE = path.join(DIR, 'flowboard-chat.json');
+const rooms = new Map(); /* boardId -> Set<conn> */
+function loadChat() { try { return JSON.parse(fs.readFileSync(CHAT_FILE, 'utf8')); } catch (e) { return {}; } }
+function saveChat(c) { try { const t = CHAT_FILE + '.tmp'; fs.writeFileSync(t, JSON.stringify(c)); fs.renameSync(t, CHAT_FILE); } catch (e) {} }
+function roomOf(id) { let r = rooms.get(id); if (!r) { r = new Set(); rooms.set(id, r); } return r; }
+function wsFrame(op, payload) {
+  const len = payload.length;
+  let head;
+  if (len < 126) { head = Buffer.alloc(2); head[1] = len; }
+  else if (len < 65536) { head = Buffer.alloc(4); head[1] = 126; head.writeUInt16BE(len, 2); }
+  else { head = Buffer.alloc(10); head[1] = 127; head.writeBigUInt64BE(BigInt(len), 2); }
+  head[0] = 0x80 | op;
+  return Buffer.concat([head, payload]);
+}
+function wsSendRaw(c, op, buf) { if (c.gone) return; try { c.socket.write(wsFrame(op, buf)); } catch (e) {} }
+function wsText(c, str) { wsSendRaw(c, 1, Buffer.from(str)); }
+function wsJson(c, obj) { wsText(c, JSON.stringify(obj)); }
+function callPeers(c) { const out = []; for (const o of roomOf(c.boardId)) if (o !== c && !o.gone && o.inCall) out.push({ id: o.peerId, name: o.name }); return out; }
+function roomPeople(id) { const out = []; for (const o of roomOf(id)) if (!o.gone) out.push({ id: o.peerId, name: o.name, inCall: !!o.inCall }); return out; }
+function broadcast(id, except, obj) { for (const o of roomOf(id)) if (o !== except) wsJson(o, obj); }
+function joinCall(c) {
+  if (callPeers(c).length >= CALL_MAX_PEERS) { wsJson(c, { type: 'full' }); return; }
+  c.inCall = true;
+  wsJson(c, { type: 'peers', self: c.peerId, peers: callPeers(c) });
+  broadcast(c.boardId, c, { type: 'peer-joined', id: c.peerId, name: c.name });
+}
+function connGone(c) {
+  if (c.gone) return;
+  c.gone = true;
+  const r = roomOf(c.boardId); r.delete(c);
+  if (c.inCall) broadcast(c.boardId, c, { type: 'peer-left', id: c.peerId });
+  if (!r.size) rooms.delete(c.boardId);
+  try { c.socket.end(); } catch (e) {}
+}
+function onRoomMessage(c, raw) {
+  if (raw === 'ping') { wsText(c, 'pong'); return; }
+  if (raw.length > WS_MAX) return;
+  let m; try { m = JSON.parse(raw); } catch (e) { return; }
+  if (!m || typeof m !== 'object') return;
+  if (m.type === 'join') {
+    c.inCall = false;
+    wsJson(c, { type: 'hello', self: c.peerId, pid: c.pid, people: roomPeople(c.boardId), chat: loadChat()[c.boardId] || [] });
+    if (m.call) joinCall(c);
+  } else if (m.type === 'call-join') {
+    joinCall(c);
+  } else if (m.type === 'call-leave') {
+    if (c.inCall) { c.inCall = false; broadcast(c.boardId, c, { type: 'peer-left', id: c.peerId }); }
+  } else if (m.type === 'signal' && typeof m.to === 'string' && m.data && typeof m.data === 'object') {
+    for (const o of roomOf(c.boardId)) if (!o.gone && o.peerId === m.to) wsJson(o, { type: 'signal', from: c.peerId, name: c.name, data: m.data });
+  } else if (m.type === 'chat') {
+    const text = String(m.text || '').replace(/\s+$/, '').slice(0, CHAT_MAX_CHARS);
+    if (!text.trim()) return;
+    const msg = { id: crypto.randomUUID(), from: c.pid, peer: c.peerId, name: c.name, text, at: Date.now() };
+    const all = loadChat(); const hist = Array.isArray(all[c.boardId]) ? all[c.boardId] : [];
+    hist.push(msg); while (hist.length > CHAT_KEEP) hist.shift();
+    all[c.boardId] = hist; saveChat(all);
+    broadcast(c.boardId, null, { type: 'chat', msg });
+  } else if (m.type === 'leave') {
+    connGone(c);
+  }
+}
+server.on('upgrade', (req, socket) => {
+  const fail = (code, txt) => { try { socket.end('HTTP/1.1 ' + code + ' ' + txt + '\r\nConnection: close\r\n\r\n'); } catch (e) {} };
+  const full = req.url || '';
+  if (full.split('?')[0] !== '/api/call') return fail(404, 'Not Found');
+  if ((req.headers.upgrade || '').toLowerCase() !== 'websocket' || !req.headers['sec-websocket-key']) return fail(426, 'Upgrade Required');
+  if (!authorized(req, full)) return fail(401, 'Unauthorized');
+  const q = new URL('http://x' + full).searchParams;
+  const boardId = String(q.get('boardId') || '').slice(0, 80);
+  if (!boardId) return fail(400, 'Bad Request');
+  const scope = scopeOf(req, full);
+  if (scope && !scope.has(boardId)) return fail(403, 'Forbidden');
+  if (roomOf(boardId).size >= ROOM_MAX_SOCKETS) return fail(429, 'Too Many Requests');
+  const guest = findGuest(req, full), master = isMaster(req, full);
+  const accept = crypto.createHash('sha1').update(req.headers['sec-websocket-key'] + '258EAFA5-E914-47DA-95CA-C5AB0DC85B11').digest('base64');
+  socket.write('HTTP/1.1 101 Switching Protocols\r\nUpgrade: websocket\r\nConnection: Upgrade\r\nSec-WebSocket-Accept: ' + accept + '\r\n\r\n');
+  socket.setNoDelay(true);
+  const c = {
+    socket, boardId, inCall: false, gone: false, pid: principalOf(req, full),
+    peerId: String(q.get('peerId') || crypto.randomUUID()).slice(0, 80),
+    name: String((guest && guest.name) || q.get('name') || (master ? 'Me' : 'Guest')).trim().slice(0, 40) || 'Guest',
+  };
+  roomOf(boardId).add(c);
+  let buf = Buffer.alloc(0), frag = [];
+  socket.on('data', chunk => {
+    buf = Buffer.concat([buf, chunk]);
+    while (buf.length >= 2) {
+      const fin = buf[0] & 0x80, op = buf[0] & 0x0f, masked = buf[1] & 0x80;
+      let len = buf[1] & 0x7f, off = 2;
+      if (len === 126) { if (buf.length < 4) return; len = buf.readUInt16BE(2); off = 4; }
+      else if (len === 127) { if (buf.length < 10) return; const big = buf.readBigUInt64BE(2); if (big > BigInt(WS_MAX * 2)) return connGone(c); len = Number(big); off = 10; }
+      if (!masked || len > WS_MAX * 2) return connGone(c); /* clients must mask (RFC 6455 5.1) */
+      if (buf.length < off + 4 + len) return;
+      const mask = buf.subarray(off, off + 4);
+      const data = Buffer.from(buf.subarray(off + 4, off + 4 + len));
+      for (let i = 0; i < data.length; i++) data[i] ^= mask[i & 3];
+      buf = buf.subarray(off + 4 + len);
+      if (op === 8) { wsSendRaw(c, 8, data.subarray(0, 2)); return connGone(c); }
+      if (op === 9) { wsSendRaw(c, 10, data); continue; }
+      if (op === 10) continue;
+      if (op === 1 || op === 2 || op === 0) {
+        frag.push(data);
+        if (frag.reduce((n, b) => n + b.length, 0) > WS_MAX * 2) return connGone(c);
+        if (!fin) continue;
+        const msg = Buffer.concat(frag); frag = [];
+        onRoomMessage(c, msg.toString('utf8'));
+      }
+    }
+  });
+  socket.on('close', () => connGone(c));
+  socket.on('error', () => connGone(c));
 });
 
 server.listen(PORT, '0.0.0.0', () => {
