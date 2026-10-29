@@ -273,9 +273,18 @@ a.chip:hover{border-color:var(--accent)}
 .tm-side select,.tm-side input{width:100%}
 .due-row{display:flex;gap:6px;position:relative}
 .due-row #t-due-date{flex:3;min-width:0}.due-row #t-due-time{flex:2;min-width:0}
-.due-row button{flex:0 0 auto}
 .due-row input.invalid{border-color:var(--danger)}
-.clock-pop{position:absolute;top:calc(100% + 6px);right:0;z-index:60;width:248px;padding:12px;background:var(--panel);color:var(--text);border:1px solid var(--border);border-radius:14px;box-shadow:0 8px 24px rgba(0,0,0,.22)}
+.field-pop{position:absolute;top:calc(100% + 6px);z-index:60;padding:12px;background:var(--panel);color:var(--text);border:1px solid var(--border);border-radius:14px;box-shadow:0 8px 24px rgba(0,0,0,.22)}
+.field-pop.clock{right:0;width:248px}.field-pop.cal{left:0;width:252px}
+.cal-head{display:flex;align-items:center;justify-content:space-between;margin-bottom:8px;font-weight:600}
+.cal-head button{border:0;background:none;font-size:18px;padding:2px 10px;cursor:pointer;color:var(--text)}
+.cal-grid{display:grid;grid-template-columns:repeat(7,1fr);gap:2px;text-align:center;font-variant-numeric:tabular-nums}
+.cal-grid .wd{font-size:11px;color:var(--muted);padding:2px 0}
+.cal-grid button{border:0;background:none;border-radius:50%;aspect-ratio:1;padding:0;font-size:13px;cursor:pointer;color:var(--text)}
+.cal-grid button:hover{background:var(--chip)}
+.cal-grid button.out{color:var(--muted);opacity:.6}
+.cal-grid button.today{box-shadow:inset 0 0 0 1px var(--accent)}
+.cal-grid button.sel{background:var(--accent);color:var(--accent-text)}
 .clock-head{display:flex;justify-content:center;align-items:center;gap:2px;font-size:30px;font-variant-numeric:tabular-nums;margin-bottom:10px}
 .clock-head button{font:inherit;padding:2px 8px;border:0;border-radius:8px;background:var(--chip);color:var(--muted);cursor:pointer}
 .clock-head button.on{background:color-mix(in srgb,var(--accent) 22%,var(--panel));color:var(--text)}
@@ -285,7 +294,6 @@ a.chip:hover{border-color:var(--accent)}
 .clock-dial .num.inner{font-size:12px;color:var(--muted)}
 .clock-dial .num.sel{color:var(--accent-text)}
 .clock-foot{display:flex;justify-content:flex-end;gap:6px;margin-top:10px}
-.due-row .due-pick{position:absolute;right:0;bottom:0;width:1px;height:1px;opacity:0;pointer-events:none;border:0;padding:0}
 .flabel{font-size:11px;color:var(--muted);font-weight:700;text-transform:uppercase;letter-spacing:.4px;margin:12px 0 4px;display:block}
 .tm-grid2{display:grid;grid-template-columns:1fr 1fr;gap:0 10px}
 .task-modal .actions{padding:12px 22px;border-top:1px solid var(--border);margin-top:0;flex:none;position:sticky;bottom:0;background:var(--panel);z-index:2}
@@ -655,9 +663,6 @@ kbd{background:var(--chip);border:1px solid var(--border);border-radius:4px;padd
       <div class="due-row">
         <input type="text" id="t-due-date" placeholder="YYYY-MM-DD" maxlength="10" inputmode="numeric" autocomplete="off" aria-label="Due date (YYYY-MM-DD)">
         <input type="text" id="t-due-time" placeholder="HH:MM" maxlength="5" inputmode="numeric" autocomplete="off" aria-label="Due time (24-hour HH:MM)">
-        <button type="button" id="t-due-clock" title="Pick a time">🕒</button>
-        <button type="button" id="t-due-cal" title="Pick a date">📅</button>
-        <input type="date" id="t-due-pick" class="due-pick" tabindex="-1" aria-hidden="true">
         <input type="hidden" id="t-due">
       </div>
       <p class="mut" style="margin:4px 0 0">Card color shifts from green → red as the deadline approaches.</p>
@@ -1974,15 +1979,75 @@ function normalizeDueFields(){
   if(tm)tEl.value=tm[1].padStart(2,'0')+':'+tm[2];
   syncDueFromFields();
 }
+/* Popup pickers for the due fields. The field keeps focus while the popup is
+   open, so typing and paste still work; Esc or moving focus elsewhere closes it. */
+const duePopup=(()=>{
+  let pop=null,field=null,panel=null;
+  function close(){
+    if(!pop)return;
+    pop.remove();pop=field=panel=null;
+    window.removeEventListener('keydown',esc,true);
+    document.removeEventListener('pointerdown',outside,true);
+    document.removeEventListener('focusin',outside,true);
+  }
+  function esc(e){if(e.key==='Escape'){e.preventDefault();e.stopPropagation();close();}}
+  function outside(e){if(pop&&e.target!==field&&!pop.contains(e.target))close();}
+  function open(f,kind,cls,onPick){
+    close();
+    field=f;pop=el('div',{class:'field-pop '+cls});
+    pop.addEventListener('mousedown',e=>e.preventDefault()); /* keep focus (and the caret) in the field */
+    f.parentNode.append(pop);
+    panel=kind(pop,f.value,v=>{close();onPick(v);},close);
+    window.addEventListener('keydown',esc,true);
+    document.addEventListener('pointerdown',outside,true);
+    document.addEventListener('focusin',outside,true);
+  }
+  const isOpenFor=f=>!!pop&&field===f;
+  const sync=f=>{if(isOpenFor(f)&&panel.sync)panel.sync(f.value);};
+  return{open,close,isOpenFor,sync};
+})();
+/* Month calendar, weeks start on Monday (ISO 8601) */
+function calendarPanel(pop,value,done){
+  const ok=v=>/^\d{4}-\d{2}-\d{2}$/.test(v)&&localDateKey(new Date(v+'T00:00').getTime())===v;
+  let sel=ok(value)?value:'',view=new Date((sel||localDateKey(Date.now()))+'T00:00');view.setDate(1);
+  function render(){
+    const today=localDateKey(Date.now());
+    const start=new Date(view);start.setDate(1-(view.getDay()+6)%7);
+    let html='<div class="cal-head"><button type="button" data-nav="-1" title="Previous month">‹</button><span>'
+      +view.toLocaleDateString('en',{month:'long',year:'numeric'})
+      +'</span><button type="button" data-nav="1" title="Next month">›</button></div><div class="cal-grid">'
+      +['Mo','Tu','We','Th','Fr','Sa','Su'].map(d=>'<span class="wd">'+d+'</span>').join('');
+    for(let i=0;i<42;i++){
+      const d=new Date(start);d.setDate(start.getDate()+i);const k=localDateKey(d.getTime());
+      html+='<button type="button" data-d="'+k+'" class="'+(d.getMonth()!==view.getMonth()?'out ':'')+(k===today?'today ':'')+(k===sel?'sel':'')+'">'+d.getDate()+'</button>';
+    }
+    pop.innerHTML=html+'</div><div class="clock-foot"><button type="button" data-a="today">Today</button></div>';
+  }
+  pop.addEventListener('click',e=>{
+    const b=e.target.closest('button');if(!b)return;
+    if(b.dataset.nav){view.setMonth(view.getMonth()+ +b.dataset.nav);render();}
+    else if(b.dataset.d)done(b.dataset.d);
+    else if(b.dataset.a==='today')done(localDateKey(Date.now()));
+  });
+  render();
+  return{sync(v){if(ok(v)){sel=v;view=new Date(v+'T00:00');view.setDate(1);render();}}};
+}
 /* Round 24-hour time picker (Material/Google Calendar style): pick the hour
    on the dial (outer ring 1–12, inner ring 13–00), then the minute; drag to fine-tune. */
-const clockPicker=(()=>{
+function clockPanel(pop,value,done,cancel){
   const R_OUT=88,R_IN=58,C=112;
-  let pop=null,h=0,m=0,mode='h',onPick=null;
   const pad=n=>String(n).padStart(2,'0');
   const pos=(i,r)=>{const a=i/12*2*Math.PI;return[C+r*Math.sin(a),C-r*Math.cos(a)];};
+  let h,m,mode='h';
+  function set(v){
+    const t=/^([01]\d|2[0-3]):([0-5]\d)$/.exec(v||'');if(!t)return false;
+    h=+t[1];m=+t[2];return true;
+  }
+  if(!set(value)){const now=new Date();h=now.getHours();m=Math.round(now.getMinutes()/5)*5%60;}
+  pop.innerHTML='<div class="clock-head"><button type="button" data-m="h"></button>:<button type="button" data-m="m"></button></div>'
+    +'<div class="clock-dial"></div><div class="clock-foot"><button type="button" data-a="cancel">Cancel</button><button type="button" class="primary" data-a="ok">OK</button></div>';
+  const dial=pop.querySelector('.clock-dial');
   function render(){
-    const dial=pop.querySelector('.clock-dial');
     pop.querySelector('[data-m=h]').textContent=pad(h);pop.querySelector('[data-m=m]').textContent=pad(m);
     pop.querySelector('[data-m=h]').classList.toggle('on',mode==='h');pop.querySelector('[data-m=m]').classList.toggle('on',mode==='m');
     const [hx,hy]=mode==='h'?pos(h%12,h>=1&&h<=12?R_OUT:R_IN):pos(m/5,R_OUT);
@@ -1996,7 +2061,7 @@ const clockPicker=(()=>{
     dial.innerHTML=html;
   }
   function pickAt(e,snap){
-    const r=pop.querySelector('.clock-dial').getBoundingClientRect();
+    const r=dial.getBoundingClientRect();
     const x=e.clientX-r.left-C,y=e.clientY-r.top-C;
     const a=(Math.atan2(x,-y)/(2*Math.PI)+1)%1;
     if(mode==='h'){
@@ -2005,36 +2070,22 @@ const clockPicker=(()=>{
     }else{const step=snap?5:1;m=(Math.round(a*60/step)*step)%60;}
     render();
   }
-  function close(){if(pop){pop.remove();pop=null;document.removeEventListener('pointerdown',outside,true);window.removeEventListener('keydown',esc,true);}}
-  function outside(e){if(pop&&!pop.contains(e.target)&&e.target.id!=='t-due-clock')close();}
-  function esc(e){if(e.key==='Escape'){e.preventDefault();e.stopPropagation();close();}}
-  function done(){const f=onPick;const v=pad(h)+':'+pad(m);close();f&&f(v);}
-  function open(anchor,value,cb){
-    close();
-    const t=/^(\d{2}):(\d{2})$/.exec(value||'');const now=new Date();
-    h=t?+t[1]:now.getHours();m=t?+t[2]:Math.round(now.getMinutes()/5)*5%60;mode='h';onPick=cb;
-    pop=el('div',{class:'clock-pop'});
-    pop.innerHTML='<div class="clock-head"><button type="button" data-m="h"></button>:<button type="button" data-m="m"></button></div>'
-      +'<div class="clock-dial"></div><div class="clock-foot"><button type="button" data-a="cancel">Cancel</button><button type="button" class="primary" data-a="ok">OK</button></div>';
-    pop.querySelector('[data-m=h]').onclick=()=>{mode='h';render();};
-    pop.querySelector('[data-m=m]').onclick=()=>{mode='m';render();};
-    pop.querySelector('[data-a=cancel]').onclick=close;
-    pop.querySelector('[data-a=ok]').onclick=done;
-    const dial=pop.querySelector('.clock-dial');
-    let dragging=false,moved=false;
-    dial.addEventListener('pointerdown',e=>{dragging=true;moved=false;dial.setPointerCapture(e.pointerId);pickAt(e,true);});
-    dial.addEventListener('pointermove',e=>{if(dragging){moved=true;pickAt(e,false);}});
-    dial.addEventListener('pointerup',e=>{
-      if(!dragging)return;dragging=false;
-      if(mode==='h'){mode='m';render();}
-      else if(!moved)done();
-    });
-    anchor.append(pop);render();
-    document.addEventListener('pointerdown',outside,true);
-    window.addEventListener('keydown',esc,true);
-  }
-  return{open,close};
-})();
+  const finish=()=>done(pad(h)+':'+pad(m));
+  pop.querySelector('[data-m=h]').onclick=()=>{mode='h';render();};
+  pop.querySelector('[data-m=m]').onclick=()=>{mode='m';render();};
+  pop.querySelector('[data-a=cancel]').onclick=cancel;
+  pop.querySelector('[data-a=ok]').onclick=finish;
+  let dragging=false,moved=false;
+  dial.addEventListener('pointerdown',e=>{dragging=true;moved=false;dial.setPointerCapture(e.pointerId);pickAt(e,true);});
+  dial.addEventListener('pointermove',e=>{if(dragging){moved=true;pickAt(e,false);}});
+  dial.addEventListener('pointerup',()=>{
+    if(!dragging)return;dragging=false;
+    if(mode==='h'){mode='m';render();}
+    else if(!moved)finish();
+  });
+  render();
+  return{sync(v){if(set(v))render();}};
+}
 function saveTaskModal(){
   const t=editing.task;
   t.title=$('#t-title').value.trim()||'Untitled';
@@ -2095,7 +2146,7 @@ function notifyNewAssignees(task,prevAssignees){
 function openOv(sel){closeOv();$(sel).classList.add('open');}
 function closeOv(){
   $$('.overlay.open').forEach(o=>o.classList.remove('open'));
-  clockPicker.close();
+  duePopup.close();
   if(typeof flushPendingRemote==='function')flushPendingRemote();
 }
 
@@ -4513,29 +4564,30 @@ function bind(){
   });
   $('#t-desc').addEventListener('input',renderDescLinks);
   $('#t-desc').addEventListener('input',autosizeDesc);
-  ['#t-due-date','#t-due-time'].forEach(sel=>{
-    $(sel).addEventListener('input',()=>{syncDueFromFields();if(editing)updateTaskHead(editing.task);});
-    $(sel).addEventListener('change',()=>{normalizeDueFields();if(editing)updateTaskHead(editing.task);});
-  });
-  $('#t-due-clock').onclick=()=>clockPicker.open($('.due-row'),$('#t-due-time').value,v=>{
-    $('#t-due-time').value=v;
-    if(!$('#t-due-date').value)$('#t-due-date').value=localDateKey(Date.now());
+  const afterDuePick=next=>{
     syncDueFromFields();
     if(editing)updateTaskHead(editing.task);
-    const btn=$('#t-save');if(btn)try{btn.focus();}catch(err){}
-  });
-  $('#t-due-cal').onclick=()=>{
-    const pick=$('#t-due-pick'),d=$('#t-due').value.split('T')[0];
-    pick.value=d||localDateKey(Date.now());
-    try{pick.showPicker();}catch(err){pick.focus();pick.click();}
+    if(next)try{next.focus();}catch(err){}
   };
-  $('#t-due-pick').addEventListener('change',e=>{
-    if(!e.target.value)return;
-    $('#t-due-date').value=e.target.value;
-    syncDueFromFields();
-    if(editing)updateTaskHead(editing.task);
-    /* After the date picker commits, put focus on the time, then Add/Save */
-    const next=$('#t-due-time').value?$('#t-save'):$('#t-due-time');if(next)try{next.focus();}catch(err){}
+  const openDuePicker={
+    '#t-due-date':f=>duePopup.open(f,calendarPanel,'cal',v=>{
+      f.value=v;
+      /* Next: the time (unless already set), then Add/Save */
+      afterDuePick($('#t-due-time').value?$('#t-save'):$('#t-due-time'));
+    }),
+    '#t-due-time':f=>duePopup.open(f,clockPanel,'clock',v=>{
+      f.value=v;
+      if(!$('#t-due-date').value)$('#t-due-date').value=localDateKey(Date.now());
+      afterDuePick($('#t-save'));
+    })
+  };
+  ['#t-due-date','#t-due-time'].forEach(sel=>{
+    const f=$(sel);
+    f.addEventListener('input',()=>{syncDueFromFields();duePopup.sync(f);if(editing)updateTaskHead(editing.task);});
+    f.addEventListener('change',()=>{normalizeDueFields();duePopup.sync(f);if(editing)updateTaskHead(editing.task);});
+    /* Clicking into the field (or tabbing to it) pops the picker; a click after Esc reopens it */
+    f.addEventListener('focus',()=>openDuePicker[sel](f));
+    f.addEventListener('click',()=>{if(!duePopup.isOpenFor(f))openDuePicker[sel](f);});
   });
   $('#t-col').addEventListener('change',()=>{if(editing)updateTaskHead(editing.task);});
   $('#t-addsub').onclick=addSub;
