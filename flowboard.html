@@ -131,7 +131,6 @@ header h1.brand-text span{color:inherit}
   @keyframes bannerin{from{opacity:0;transform:translateY(-8px)}to{opacity:1;transform:none}}
 }
 #btn-chat{white-space:nowrap}
-#sync-btn.offline-ready{background:#2563eb;border-color:#2563eb;color:#fff}
 #btn-chat.unread{border-color:var(--accent);color:var(--accent);font-weight:600;animation:callring 1.3s ease-in-out infinite}
 #callbanner{position:fixed;top:60px;left:50%;transform:translateX(-50%);z-index:95;display:none;align-items:center;gap:10px;background:var(--panel);border:1px solid var(--accent);border-radius:12px;box-shadow:0 10px 30px rgba(0,0,0,.3);padding:8px 10px 8px 14px;max-width:calc(100vw - 24px);animation:bannerin .25s ease-out}
 #callbanner.on{display:flex}
@@ -3391,7 +3390,7 @@ let syncHandle=null,syncPollTimer=null,syncWriteTimer=null,lastSyncMod=0,applyin
 const FSA=!!(window.showSaveFilePicker&&window.showOpenFilePicker);
 function syncBtn(mode){
   const b=$('#sync-btn');
-  if(serverMode){b.style.display='';b.dataset.mode='server';b.textContent=serverAlive?'🟢 Live sync':'📴 Offline, changes saved, will auto-sync';b.classList.toggle('offline-ready',!!offlineReady&&serverAlive);b.title=offlineReady?'This browser has a copy of FlowBoard and opens it without the server':'Offline copy not ready yet: reload once while online';return;}
+  if(serverMode){b.style.display='';b.dataset.mode='server';b.textContent=serverAlive?((offlineReady?'🔵':'🟢')+' Live sync'):'📴 Offline, changes saved, will auto-sync';b.title=offlineReady?'This browser has a copy of FlowBoard and opens it without the server':'Offline copy not ready yet: reload once while online';return;}
   if(typeof offlineStart!=='undefined'&&offlineStart){b.style.display='';b.dataset.mode='server';b.textContent='📴 Offline, changes saved, will auto-sync';return;}
   if(!syncHandle){b.style.display='none';return;}
   b.style.display='';
