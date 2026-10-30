@@ -184,7 +184,9 @@ self.addEventListener('fetch', e => {
     });
     try {
       const r = await Promise.race([net, new Promise(res => setTimeout(res, SW_TIMEOUT_MS, null))]);
-      if (r) return r;
+      /* 5xx = server/proxy up but app down (e.g. Cloudflare 521/522, Traefik 502): prefer the cached app */
+      if (r && r.status < 500) return r;
+      if (r) { const c = await cache.match(key); return c || r; }
     } catch (err) {}
     const cached = await cache.match(key);
     return cached || net;

@@ -3390,7 +3390,7 @@ let syncHandle=null,syncPollTimer=null,syncWriteTimer=null,lastSyncMod=0,applyin
 const FSA=!!(window.showSaveFilePicker&&window.showOpenFilePicker);
 function syncBtn(mode){
   const b=$('#sync-btn');
-  if(serverMode){b.style.display='';b.dataset.mode='server';b.textContent=serverAlive?'🟢 Live sync':'📴 Offline, changes saved, will auto-sync';return;}
+  if(serverMode){b.style.display='';b.dataset.mode='server';b.textContent=(serverAlive?'🟢 Live sync':'📴 Offline, changes saved, will auto-sync')+(offlineReady?' · offline ✓':'');b.title=offlineReady?'This browser has a copy of FlowBoard and opens it without the server':'Offline copy not ready yet: reload once while online';return;}
   if(typeof offlineStart!=='undefined'&&offlineStart){b.style.display='';b.dataset.mode='server';b.textContent='📴 Offline, changes saved, will auto-sync';return;}
   if(!syncHandle){b.style.display='none';return;}
   b.style.display='';
@@ -4694,7 +4694,17 @@ snapshot();saveQuiet();
 renderAll();
 initSync();
 initServer();
-if('serviceWorker'in navigator&&(location.protocol==='https:'||location.hostname==='localhost'))navigator.serviceWorker.register('sw.js').catch(()=>{});
+/* offline start: the service worker (served by flowboard-server.js) keeps a copy of this page */
+var offlineReady=false;
+async function checkOfflineReady(){
+  try{
+    offlineReady=!!(navigator.serviceWorker&&navigator.serviceWorker.controller&&window.caches&&await caches.match(location.origin+'/'));
+  }catch(e){offlineReady=false;}
+  syncBtn();
+}
+if('serviceWorker'in navigator&&(location.protocol==='https:'||location.hostname==='localhost')){
+  navigator.serviceWorker.register('sw.js').then(()=>setTimeout(checkOfflineReady,1500)).catch(()=>{});
+}
 /* recover from IndexedDB backup if it is newer (e.g. After a localStorage-quota failure).
    Skip on live-sync URLs: an old IDB snapshot must not resurrect a stale 200-To-do board over the cloud. */
 (async()=>{
