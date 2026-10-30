@@ -1594,7 +1594,7 @@ function cardEl(t){
   const badges=el('div',{class:'badges'});
   if(focusIds.has(t.id))badges.append(el('span',{class:'badge focus',text:'🎯',title:'FOCUS: top 20% by impact ÷ effort'}));
   const di=dueInfo(t);
-  if(di)badges.append(el('span',{class:'badge due '+di.cls,text:'📅 '+di.label,title:di.tip}));
+  if(di)badges.append(el('span',{class:'badge due '+di.cls,text:di.label,title:di.tip}));
   if(t.desc&&t.desc.trim())badges.append(el('span',{class:'badge',text:'📝',title:'Has a description'}));
   if(t.subtasks.length){const d=t.subtasks.filter(s=>s.done).length;badges.append(el('span',{class:'badge',text:'☑ '+d+'/'+t.subtasks.length}));}
   const tt=taskTime(t);
