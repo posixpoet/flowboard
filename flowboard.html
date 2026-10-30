@@ -215,8 +215,9 @@ header h1.brand-text span{color:inherit}
 .badge{background:rgba(0,0,0,.10);border-radius:4px;padding:1px 6px;white-space:nowrap}
 body.dark .card .badge{background:rgba(255,255,255,.08)}
 body.dark .card .badge.lbl{background:rgba(255,255,255,.12)}
-.badge.due-over{background:color-mix(in srgb,var(--urg-over) 70%,#000);color:var(--urg-text)}
-.badge.due-today{background:color-mix(in srgb,var(--urg-warm) 75%,#000);color:var(--urg-text)}
+.badge.due{font-variant-numeric:tabular-nums}
+.card .badge.due-over{background:#d64545;color:#fff;font-weight:600}
+.card .badge.due-warn{background:#f2c94c;color:#3a2e00;font-weight:600}
 .badge.due-soon{background:rgba(0,0,0,.08)}
 body.dark .card .badge.due-soon{background:rgba(255,255,255,.1)}
 .card.due-over{box-shadow:0 0 0 1px color-mix(in srgb,var(--urg-over) 45%,transparent),var(--shadow)}
@@ -529,7 +530,7 @@ kbd{background:var(--chip);border:1px solid var(--border);border-radius:4px;padd
       <input type="file" id="importfile" accept=".json" style="display:none">
       <hr>
       <div class="menu-label">Prefs</div>
-      <button id="m-settings">⚙ Timer settings</button>
+      <button id="m-settings">⚙ Settings</button>
       <button id="m-password" style="display:none">🔑 Change password</button>
       <button id="m-usage" style="display:none">📈 My usage</button>
       <button id="m-dark">🌙 Dark mode</button>
@@ -771,12 +772,15 @@ kbd{background:var(--chip);border:1px solid var(--border);border-radius:4px;padd
 
 <!-- Settings -->
 <div class="overlay" id="ov-settings"><div class="modal">
-  <h2>⚙ Timer settings<button class="ghost x" data-close>✕</button></h2>
+  <h2>⚙ Settings<button class="ghost x" data-close>✕</button></h2>
   <div class="frow">
     <div><label>Work (min)</label><input type="number" id="s-work" min="1"></div>
     <div><label>Short break</label><input type="number" id="s-short" min="1"></div>
     <div><label>Long break</label><input type="number" id="s-long" min="1"></div>
     <div><label>Long break every</label><input type="number" id="s-every" min="1"></div>
+  </div>
+  <div class="frow">
+    <div><label>Due date turns yellow (days before)</label><input type="number" id="s-duewarn" min="0" max="60"></div>
   </div>
   <div class="actions"><button class="primary" id="s-save">Save</button></div>
 </div></div>
@@ -822,7 +826,7 @@ function blankBoard(name){
     columns:[{id:uid(),name:'To-do',wip:0,done:false},{id:uid(),name:'In progress',wip:3,done:false},{id:uid(),name:'Done',wip:0,done:true}],
     lanes:[{id:l1,name:'',collapsed:false}],labels:[],tasks:[],archive:[],history:[]};
 }
-function defaultSettings(){return{dark:!!(window.matchMedia&&matchMedia('(prefers-color-scheme: dark)').matches),work:25,short:5,long:15,every:4};}
+function defaultSettings(){return{dark:!!(window.matchMedia&&matchMedia('(prefers-color-scheme: dark)').matches),work:25,short:5,long:15,every:4,dueWarn:2};}
 function defaultState(){
   const b=blankBoard('Main');
   const lbl={id:uid(),name:'example'};b.labels.push(lbl);
@@ -1031,16 +1035,22 @@ function findTask(id){for(const b of state.boards){const t=b.tasks.find(x=>x.id=
 /* ISO 8601 date (YYYY-MM-DD) and 24-hour time (HH:MM), both in local time, regardless of browser locale */
 function fmtDate(d){return localDateKey(d instanceof Date?d.getTime():d);}
 function fmtTime(d){d=d instanceof Date?d:new Date(d);return String(d.getHours()).padStart(2,'0')+':'+String(d.getMinutes()).padStart(2,'0');}
+/* card badge: calendar days until the due date (negative when overdue), red when overdue,
+   yellow within settings.dueWarn days; full date/time in the tooltip */
 function dueInfo(t){
   if(!t.due)return null;
-  const d=new Date(t.due),now=new Date();
-  const label=fmtDate(d)+(t.due.includes('T')&&!t.due.endsWith('T00:00')?' '+fmtTime(d):'');
+  const s=String(t.due),m=s.match(/^(\d{4})-(\d{2})-(\d{2})(?:T(\d{2}):(\d{2}))?/);
+  if(!m)return null;
+  const hasTime=!!m[4]&&!(m[4]==='00'&&m[5]==='00');
+  const day=new Date(+m[1],+m[2]-1,+m[3]);
+  const due=hasTime?new Date(+m[1],+m[2]-1,+m[3],+m[4],+m[5]):new Date(+m[1],+m[2]-1,+m[3],23,59,59,999);
+  const now=new Date(),today=new Date(now.getFullYear(),now.getMonth(),now.getDate());
+  const days=Math.round((day-today)/864e5);
+  const warn=Math.max(0,+((state.settings||{}).dueWarn??2)||0);
   let cls='';
-  const endOfToday=new Date();endOfToday.setHours(23,59,59,999);
-  if(d<now)cls='due-over';
-  else if(d<=endOfToday)cls='due-today';
-  else{const week=new Date();week.setDate(week.getDate()+7);if(d<=week)cls='due-soon';}
-  return{label,cls};
+  if(!isTaskDone(t)){if(due<now)cls='due-over';else if(days<=warn)cls='due-warn';}
+  const tip='Due '+m[1]+'-'+m[2]+'-'+m[3]+(hasTime?' '+m[4]+':'+m[5]:'')+(days===0?' (today)':days>0?' (in '+days+' day'+(days===1?'':'s')+')':' ('+(-days)+' day'+(days===-1?'':'s')+' overdue)');
+  return{label:days+'d',cls,tip};
 }
 const URGENCY_KEYS=['calm','fresh','warm','hot','over','done'];
 function urgColor(key){return getComputedStyle(document.body).getPropertyValue('--urg-'+key).trim();}
@@ -1584,7 +1594,7 @@ function cardEl(t){
   const badges=el('div',{class:'badges'});
   if(focusIds.has(t.id))badges.append(el('span',{class:'badge focus',text:'🎯',title:'FOCUS: top 20% by impact ÷ effort'}));
   const di=dueInfo(t);
-  if(di)badges.append(el('span',{class:'badge '+di.cls,text:'📅 '+di.label}));
+  if(di)badges.append(el('span',{class:'badge due '+di.cls,text:'📅 '+di.label,title:di.tip}));
   if(t.desc&&t.desc.trim())badges.append(el('span',{class:'badge',text:'📝',title:'Has a description'}));
   if(t.subtasks.length){const d=t.subtasks.filter(s=>s.done).length;badges.append(el('span',{class:'badge',text:'☑ '+d+'/'+t.subtasks.length}));}
   const tt=taskTime(t);
@@ -4496,14 +4506,16 @@ function bind(){
   $('#m-settings').onclick=()=>{
     $('#s-work').value=state.settings.work;$('#s-short').value=state.settings.short;
     $('#s-long').value=state.settings.long;$('#s-every').value=state.settings.every;
+    $('#s-duewarn').value=state.settings.dueWarn??2;
     openOv('#ov-settings');
   };
   $('#s-save').onclick=()=>{
     state.settings.work=+$('#s-work').value||25;state.settings.short=+$('#s-short').value||5;
     state.settings.long=+$('#s-long').value||15;state.settings.every=+$('#s-every').value||4;
+    {const w=parseInt($('#s-duewarn').value,10);state.settings.dueWarn=isNaN(w)?2:Math.max(0,Math.min(60,w));}
     const tmS=curTimer();
     if(tmS&&!tmS.running&&tmS.mode==='pomodoro'&&tmS.phase==='work')tmS.remainMs=state.settings.work*60000;
-    save();renderPomo();closeOv();
+    save();renderPomo();renderBoard();closeOv();
   };
   /* pomodoro. Start/stop only (no pause or skip) */
   $('#pomo-start').onclick=()=>startTimer();
