@@ -4542,7 +4542,7 @@ function bind(){
     const modal=ov&&ov.querySelector('.task-modal');
     if(!ov||!modal||!window.visualViewport)return;
     const fit=()=>{
-      if(!ov.classList.contains('open')){
+      if(!ov.classList.contains('open')||!matchMedia('(max-width:640px)').matches){
         modal.style.height='';modal.style.maxHeight='';
         return;
       }
