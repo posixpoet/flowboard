@@ -3391,6 +3391,7 @@ const FSA=!!(window.showSaveFilePicker&&window.showOpenFilePicker);
 function syncBtn(mode){
   const b=$('#sync-btn');
   if(serverMode){b.style.display='';b.dataset.mode='server';b.textContent=serverAlive?'🟢 Live sync':'📴 Offline, changes saved, will auto-sync';return;}
+  if(typeof offlineStart!=='undefined'&&offlineStart){b.style.display='';b.dataset.mode='server';b.textContent='📴 Offline, changes saved, will auto-sync';return;}
   if(!syncHandle){b.style.display='none';return;}
   b.style.display='';
   b.textContent=mode==='reconnect'?'🔗 Reconnect sync':(mode==='error'?'⚠ Sync error, click to retry':'🟢 Synced');
@@ -3552,6 +3553,9 @@ let serverMode=false,serverAlive=false,serverPushTimer=null;
 let timerPushPending=false; /* a local change is queued or in flight: the server's timer is older than ours */
 let pendingRemote=null; /* remote state deferred while a task dialog is open / drag in progress */
 let baseServerAt=0; /* last server updatedAt we adopted (detect concurrent edits) */
+try{baseServerAt=+localStorage.getItem('flowboard.serverAt')||0;}catch(e){}
+/* persisted: after a reload, state.updatedAt>baseServerAt means this device has edits the server has not seen */
+function setBaseServerAt(v){baseServerAt=Math.max(baseServerAt,v||0);try{localStorage.setItem('flowboard.serverAt',String(baseServerAt));}catch(e){}}
 let serverHydrated=false; /* true after this session loaded/confirmed cloud state — blocks stale localStorage from overwriting the server */
 let saasUser=null;
 let saasModeLogin=true; /* lock form: true=login (default), false=signup */
@@ -3679,7 +3683,7 @@ function mergeRemoteIntoState(data){
   }
   board=state.boards.find(b=>b.id===state.activeBoard)||state.boards[0];
   state.activeBoard=board.id;
-  baseServerAt=Math.max(baseServerAt,remoteAt);
+  setBaseServerAt(remoteAt);
   saveQuiet();
   applyingRemote=false;
   return true;
@@ -3705,7 +3709,7 @@ function forceAdoptRemote(data){
   pendingRemote=null;
   state.boards=fixed.boards;
   state.updatedAt=fixed.updatedAt;
-  baseServerAt=Math.max(baseServerAt,fixed.updatedAt||0);
+  setBaseServerAt(fixed.updatedAt||0);
   serverHydrated=true;
   if(Object.prototype.hasOwnProperty.call(data,'timer')){
     state.timer=(data.timer&&typeof data.timer==='object')?data.timer:null;
@@ -3777,7 +3781,7 @@ function adoptRemote(data){
   if(!fixed)return;
   applyingRemote=true;
   state.boards=fixed.boards;state.updatedAt=fixed.updatedAt;
-  baseServerAt=Math.max(baseServerAt,fixed.updatedAt||0);
+  setBaseServerAt(fixed.updatedAt||0);
   serverHydrated=true;
   /* Timer is per-account/device group from the server — never take a friend's timer */
   if(Object.prototype.hasOwnProperty.call(data,'timer')){
@@ -3876,10 +3880,9 @@ function withTimeout(promise,ms,label){
     new Promise((_,rej)=>setTimeout(()=>rej(new Error(label||'timeout')),ms))
   ]);
 }
-async function initServer(){
+async function initServer(retry){
   if(location.protocol!=='http:'&&location.protocol!=='https:')return;
-  setupLockUi();
-  showLock('');
+  if(!retry){setupLockUi();showLock('');}
   const LOAD_MS=12000;
   if(SAAS){
     /* Invite link + logged-in account → mount into their boards list */
@@ -3949,21 +3952,34 @@ async function initServer(){
     return;
   }
   try{
-    const r=await withTimeout(apiFetch('api/state',{cache:'no-store'}),LOAD_MS,'state');
+    const r=await withTimeout(apiFetch('api/state',{cache:'no-store'}),retry?8000:LOAD_MS,'state');
     if(r.status===401){
+      offlineStart=false;
       showLock(boardKey?'That key is not valid. It may have been revoked.':'');
       return;
     }
-    if(!r.ok){hideLock();return;}
-    afterServerReady();
+    if(!r.ok)throw new Error('http '+r.status);
     const remote=await r.json().catch(()=>null);
-    if(remote&&remote.boards&&remote.boards.length)forceAdoptRemote(remote);
+    offlineStart=false;clearTimeout(offlineRetryTimer);
+    afterServerReady();
+    if(remote&&remote.boards&&remote.boards.length){
+      /* edits made while the server was unreachable (offline start, or tab closed before sync): union, then push */
+      if(baseServerAt>0&&(state.updatedAt||0)>baseServerAt){
+        mergeRemoteIntoState(remote);serverHydrated=true;renderAll();renderPresence();scheduleServerPush();
+      }else forceAdoptRemote(remote);
+    }
     else scheduleServerPush();
   }catch(e){
-    if(e&&e.message==='state')showLock('Connection timed out. Check your network and try again.');
-    else hideLock();
+    /* server unreachable: keep working on the local copy (needs a stored key) and retry */
+    if(!boardKey&&!retry){showLock(e&&e.message==='state'?'Connection timed out. Check your network and try again.':'Server not reachable. Check your network and try again.');return;}
+    hideLock();
+    offlineStart=true;syncBtn();
+    clearTimeout(offlineRetryTimer);
+    offlineRetryTimer=setTimeout(()=>initServer(true),10000);
   }
 }
+let offlineStart=false,offlineRetryTimer=null;
+window.addEventListener('online',()=>{if(offlineStart){clearTimeout(offlineRetryTimer);initServer(true);}});
 async function tryUnlock(){
   if(SAAS)return trySaasAuth();
   const k=$('#lock-key').value.trim();
@@ -4196,7 +4212,7 @@ function scheduleServerPush(){
               }else if(remoteAt>localAt){
                 adoptRemote(remote);
               }else{
-                baseServerAt=Math.max(baseServerAt,remoteAt);
+                setBaseServerAt(remoteAt);
               }
             }
           }
@@ -4215,7 +4231,7 @@ function scheduleServerPush(){
       serverAlive=r.ok;
       if(r.ok)timerPushPending=false;
       if(r.ok&&!isViewingShared()){
-        baseServerAt=Math.max(baseServerAt,state.updatedAt||0);
+        setBaseServerAt(state.updatedAt||0);
         serverHydrated=true;
       }
     }catch(e){serverAlive=false;}
@@ -4678,6 +4694,7 @@ snapshot();saveQuiet();
 renderAll();
 initSync();
 initServer();
+if('serviceWorker'in navigator&&(location.protocol==='https:'||location.hostname==='localhost'))navigator.serviceWorker.register('sw.js').catch(()=>{});
 /* recover from IndexedDB backup if it is newer (e.g. After a localStorage-quota failure).
    Skip on live-sync URLs: an old IDB snapshot must not resurrect a stale 200-To-do board over the cloud. */
 (async()=>{

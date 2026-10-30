@@ -162,6 +162,36 @@ async function iceServers() {
   return data;
 }
 
+/* Service worker: network-first for the app page, cached copy only when the server is unreachable
+   (or slower than SW_TIMEOUT_MS). API calls are never cached. */
+const SW_JS = `
+const CACHE = 'flowboard-page';
+const PAGES = ['/', '/index.html', '/flowboard.html'];
+const SW_TIMEOUT_MS = 3000;
+self.addEventListener('install', () => self.skipWaiting());
+self.addEventListener('activate', e => e.waitUntil(self.clients.claim()));
+self.addEventListener('fetch', e => {
+  const req = e.request;
+  if (req.method !== 'GET' || req.mode !== 'navigate') return;
+  const url = new URL(req.url);
+  if (url.origin !== self.location.origin || !PAGES.includes(url.pathname)) return;
+  e.respondWith((async () => {
+    const cache = await caches.open(CACHE);
+    const key = url.origin + '/';
+    const net = fetch(req).then(r => {
+      if (r.ok && (r.headers.get('content-type') || '').includes('text/html')) cache.put(key, r.clone());
+      return r;
+    });
+    try {
+      const r = await Promise.race([net, new Promise(res => setTimeout(res, SW_TIMEOUT_MS, null))]);
+      if (r) return r;
+    } catch (err) {}
+    const cached = await cache.match(key);
+    return cached || net;
+  })());
+});
+`;
+
 const server = http.createServer((req, res) => {
   const url = (req.url || '/').split('?')[0];
 
@@ -171,6 +201,12 @@ const server = http.createServer((req, res) => {
       res.writeHead(200, {'Content-Type':'text/html; charset=utf-8','Cache-Control':'no-store'});
       res.end(buf);
     });
+    return;
+  }
+
+  if (url === '/sw.js' && req.method === 'GET') {
+    res.writeHead(200, {'Content-Type':'text/javascript; charset=utf-8','Cache-Control':'no-store'});
+    res.end(SW_JS);
     return;
   }
 
