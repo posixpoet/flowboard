@@ -22,7 +22,8 @@ All client state is one JSON object:
 ```
 state = {
   v: 2,
-  settings: { dark, work, short, long, every },   // theme + pomodoro durations
+  settings: { dark, work, short, long, every,     // theme + pomodoro durations
+              dueWarn, jrAttr, jrResp },           // due badge warning days, Joy × Responsibility thresholds
   activeBoard: "<board id>",
   updatedAt: 1730000000000,                       // monotonic timestamp for sync
   timer: { mode, taskId, phase, running, ... } | null,  // synced pomodoro/stopwatch
@@ -38,7 +39,15 @@ state = {
                  colId, laneId,                    // position on the board
                  subtasks[], attachments[],        // attachment bytes live in IndexedDB
                  timeLog: [ { d, s } ],            // seconds tracked per day
-                 createdAt, doneAt } ],
+                 createdAt, doneAt,
+                 // optional, added by Joy × Responsibility (old boards simply lack them):
+                 motivation: { attraction, responsibility,          // 0–100 or null (= unknown, never 0)
+                   attractionConfidence, responsibilityConfidence, // 'low' | 'medium' | 'high'
+                   attractionReason, responsibilityReason, nextAction, missingContext[],
+                   evaluatedAt, inputHash, model },                // inputHash ≠ current input → shown as "changed"
+                 lastActivityAt,                   // last edit / move / logged time / pause (not AI scoring)
+                 resumeContext, pausedAt,          // optional "where I left off" note, paused mark
+                 statusLog: [ { at, colId, done } ] } ],  // column changes, kept when a task is reopened
     archive: [ ...tasks ],
     history: [ { d, c: {colId: count} } ]          // daily snapshot, drives the cumulative-flow chart
   } ]
@@ -94,7 +103,11 @@ Attachments are never uploaded, they stay in each device’s IndexedDB.
 
 Search for these section comments / symbols in the `<script>`:
 
-`state` / `repair` → `attachments` → `filters` / `updateFilterBtn` → `groupByDoneDate` (done-column grouping) → `boards (multi)` → `renderBoard` → `drag & drop` / `releaseTimerTask` → `task modal` → `pomodoro` (`startTimer`, no pause/skip) → `video call` (`startCall`, `makePc`, `onSignal`) → `analytics` → `pareto` → `archive` → `import / export` → `shared-file sync` → `live server sync` (`SAAS`, `apiFetch`, `trySaasAuth`, `openAdmin`) → `theme & events` → `init`.
+`state` / `repair` → `attachments` → `filters` / `updateFilterBtn` → `groupByDoneDate` (done-column grouping) → `boards (multi)` → `renderBoard` → `drag & drop` / `releaseTimerTask` → `task modal` → `pomodoro` (`startTimer`, no pause/skip) → `video call` (`startCall`, `makePc`, `onSignal`) → `analytics` → `pareto` → `joy × responsibility` (`ollamaFetch`, `validateJr`, `jrEvaluate`, `jrStart`, `renderJR`) → `archive` → `import / export` → `shared-file sync` → `live server sync` (`SAAS`, `apiFetch`, `trySaasAuth`, `openAdmin`) → `theme & events` → `init`.
+
+## Joy × Responsibility (Ollama)
+
+The 🧭 view calls the user's own Ollama server straight from the browser (`GET /api/tags` for the model list, `POST /api/chat` with `stream:false`, a JSON schema in `format` and `temperature:0.2`). There is no server-side piece. Only an explicit click sends anything, and each request carries one task (`jrInput`). The answer goes through `validateJr`, which rejects the whole answer rather than clamping, and only then is it written to `task.motivation`. The write goes onto the *current* copy of the task, looked up again after the request, because a sync may have replaced the board while the model was thinking. A remote edit adopted in the meantime is therefore kept, and the evaluation shows as "changed". Address, model and collapsed sections live in `localStorage` (`flowboard.ollama.*`, `flowboard.jr.open`), so they stay per device and never reach the sync server. CORS (`OLLAMA_ORIGINS`) and mixed-content requirements are in the README.
 
 ## Design decisions, briefly
 

@@ -8,7 +8,7 @@ const path = require('path');
 const os = require('os');
 const crypto = require('crypto');
 
-const PORT = 8765;
+const PORT = +process.env.PORT || 8765; /* PORT=8766 node flowboard-server.js if 8765 is taken */
 const DIR = __dirname;
 const HTML_FILE = path.join(DIR, 'flowboard.html');
 const DATA_FILE = path.join(DIR, 'flowboard-data.json');
