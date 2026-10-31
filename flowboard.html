@@ -837,7 +837,7 @@ kbd{background:var(--chip);border:1px solid var(--border);border-radius:4px;padd
     <div style="flex:1;min-width:220px"><label for="s-ollama-url">Ollama address</label><input id="s-ollama-url" placeholder="http://localhost:11434" spellcheck="false" autocomplete="off"></div>
   </div>
   <div class="frow" style="align-items:flex-end">
-    <div style="flex:1;min-width:180px"><label for="s-ollama-model">Model</label><select id="s-ollama-model"></select></div>
+    <div style="flex:1;min-width:180px"><label for="s-ollama-model">Model</label><input id="s-ollama-model" list="s-ollama-models" placeholder="e.g. qwen3.5:9b" spellcheck="false" autocomplete="off"><datalist id="s-ollama-models"></datalist></div>
     <div><button id="s-ollama-refresh" type="button">↻ Load models</button></div>
   </div>
   <p class="mut" id="s-ollama-status"></p>
@@ -3857,12 +3857,11 @@ function renderTaskJr(t){
 }
 /* ---- AI settings (inside ⚙ Settings) ---- */
 let jrModelList=null; /* models from the last successful load in the settings dialog */
+/* the model is whatever name you type; a loaded list only offers suggestions and never changes the field */
 function fillModelSelect(models,saved){
-  const sel=$('#s-ollama-model');sel.innerHTML='';
-  if(!models){sel.append(el('option',{value:saved||'',text:saved||'(press Load models)'}));sel.value=saved||'';return;}
-  sel.append(el('option',{value:'',text:'(choose a model)'}));
-  models.forEach(m=>sel.append(el('option',{value:m.name,text:m.name+(m.size?' · '+m.size:'')})));
-  sel.value=models.some(m=>m.name===saved)?saved:'';
+  const list=$('#s-ollama-models');list.innerHTML='';
+  (models||[]).forEach(m=>list.append(el('option',{value:m.name,label:m.size||''})));
+  if(saved!==undefined)$('#s-ollama-model').value=saved||'';
 }
 async function loadOllamaModels(){
   const st=$('#s-ollama-status'),btn=$('#s-ollama-refresh');
@@ -3872,24 +3871,26 @@ async function loadOllamaModels(){
   try{
     const models=await ollamaModels(base);
     jrModelList={base,models};
-    fillModelSelect(models,saved);
+    fillModelSelect(models);
+    const typed=$('#s-ollama-model').value.trim();
     if(!models.length)st.textContent='The server has no chat models installed (install one with: ollama pull <model>).';
-    else if(saved&&!models.some(m=>m.name===saved))st.textContent='⚠ The model chosen before, "'+saved+'", is not installed on this server. Please choose one.';
-    else st.textContent=models.length+' model'+(models.length===1?'':'s')+' available'+(saved?'':'. Choose one and press Save')+'.';
+    else if(typed&&!models.some(m=>m.name===typed))st.textContent='⚠ "'+typed+'" is not installed on this server: '+models.map(m=>m.name).join(', ')+'.';
+    else st.textContent=models.map(m=>m.name).join(', ')+(typed?'':'. Type or pick one and press Save')+'.';
   }catch(e){
-    jrModelList=null;fillModelSelect(null,saved);
-    st.textContent='⚠ '+e.message;
+    jrModelList=null;fillModelSelect(null);
+    st.textContent='⚠ Could not list the models ('+e.message+') You can still type the model name and press Save.';
   }
   btn.disabled=false;
 }
 function saveAiSettings(){
   jrKeep(JR_LS.url,cleanBaseUrl($('#s-ollama-url').value));
-  const pick=$('#s-ollama-model').value;
-  /* an explicit pick only: an empty choice keeps the previous model, nothing ever switches automatically */
+  const pick=$('#s-ollama-model').value.trim().slice(0,100);
+  /* only what you typed: an empty field keeps the previous model, nothing ever switches automatically */
   if(pick){
-    jrKeep(JR_LS.model,pick);
     const info=jrModelList&&jrModelList.models.find(m=>m.name===pick);
     if(info)jrKeep(JR_LS.think,info.think?'1':'0');
+    else if(pick!==ollamaModel())jrKeep(JR_LS.think,''); /* capability unknown for a typed name: send no think option */
+    jrKeep(JR_LS.model,pick);
   }
   const f=(v,d)=>{v=parseInt(v,10);return v>=1&&v<=100?v:d;};
   state.settings.jrAttr=f($('#s-jr-attr').value,50);
