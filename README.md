@@ -134,11 +134,11 @@ Below the grid:
 
 In the browser, nothing is sent until you click **✨ Evaluate** on a task, or **✨ Evaluate unrated**. The optional [nightly job](#nightly-evaluation-optional) evaluates on the server instead. The bulk button says how many tasks it will send and asks you to confirm. Each request contains **one** task: today's date, title, notes (first 2000 characters), label names, due date, subtask texts, and the impact rating if you set one yourself. It never includes other tasks, the creation date or the column. Requests run one at a time, show progress and can be cancelled. Every finished evaluation is saved straight away, and a failed request does not undo the others.
 
-The model gets a fixed system prompt and the task as JSON marked as untrusted data, with `stream: false`, `temperature: 0.2` and a JSON schema in `format`. The answer is validated strictly: scores must be whole numbers from 0 to 100 or `null`, confidence must be low, medium or high. An answer that breaks these rules is rejected as a whole and nothing is stored. Values are never clamped or guessed.
+The model gets a fixed system prompt (`JR_PROMPT` in `flowboard.html`, also used by the nightly job; it includes your stated rule that incidents are critical) and the task as JSON marked as untrusted data, with `stream: false`, `temperature: 0.2` and a JSON schema in `format`. The answer is validated strictly: scores must be whole numbers from 0 to 100 or `null`, confidence must be low, medium or high. An answer that breaks these rules is rejected as a whole and nothing is stored. Values are never clamped or guessed.
 
 ### Stale scores, and what the scores never touch
 
-When the title, notes, labels, subtasks or due date change, the scores stay visible but are drawn dashed and marked "changed". Moving a task, ticking a subtask or pausing does not count as a change. **Evaluate unrated** sends tasks that were never evaluated plus changed ones, and skips the rest.
+When the title, notes, labels, subtasks or due date change, or the prompt itself is edited, the scores stay visible but are drawn dashed and marked "changed". Moving a task, ticking a subtask or pausing does not count as a change. **Evaluate unrated** sends tasks that were never evaluated plus changed ones, and skips the rest.
 
 The scores never change your impact/effort, the Pareto ranking or the 🎯 marks. Scores and reasons are stored on the task (`task.motivation`), so they sync, back up and restore with the board. The Ollama address, the model choice and collapsed sections are kept per browser (`localStorage`).
 
