@@ -132,7 +132,7 @@ Below the grid:
 
 ### What is sent, and when
 
-Nothing is sent until you click **✨ Evaluate** on a task, or **✨ Evaluate unrated**. The bulk button says how many tasks it will send and asks you to confirm. Each request contains **one** task: today's date, title, notes (first 2000 characters), label names, due date, subtask texts, and the impact rating if you set one yourself. It never includes other tasks, the creation date or the column. Requests run one at a time, show progress and can be cancelled. Every finished evaluation is saved straight away, and a failed request does not undo the others.
+In the browser, nothing is sent until you click **✨ Evaluate** on a task, or **✨ Evaluate unrated**. The optional [nightly job](#nightly-evaluation-optional) evaluates on the server instead. The bulk button says how many tasks it will send and asks you to confirm. Each request contains **one** task: today's date, title, notes (first 2000 characters), label names, due date, subtask texts, and the impact rating if you set one yourself. It never includes other tasks, the creation date or the column. Requests run one at a time, show progress and can be cancelled. Every finished evaluation is saved straight away, and a failed request does not undo the others.
 
 The model gets a fixed system prompt and the task as JSON marked as untrusted data, with `stream: false`, `temperature: 0.2` and a JSON schema in `format`. The answer is validated strictly: scores must be whole numbers from 0 to 100 or `null`, confidence must be low, medium or high. An answer that breaks these rules is rejected as a whole and nothing is stored. Values are never clamped or guessed.
 
@@ -184,6 +184,22 @@ ovas01.xtremnet.de:7870 {
 Then add the board's origin (for example `https://flowboard.yourname.workers.dev`) to `OLLAMA_ORIGINS`: the proxy passes the `Origin` header through and Ollama still checks it. Keep the proxy reachable only on your own network. Ollama has no login of its own. When an HTTPS page on the internet calls an address on your local network, recent Chrome versions ask once for permission to access local network devices. Allow it for your board. This reverse proxy is not part of this repository and does not exist yet; set it up only if you use the HTTPS board.
 
 Without Ollama, or offline, everything else works as before. The 🧭 view still shows the stored scores, and Evaluate reports what went wrong (server unreachable, origin refused, mixed content, model missing, invalid answer).
+
+### Nightly evaluation (optional)
+
+`tools/jr-nightly.mjs` evaluates by itself at night, so the scores are ready in the morning. It picks open tasks that have no scores yet or whose content changed since they were scored, sends them one at a time, and writes the results to the board. Browsers that are open pick them up like any other change.
+
+- **When:** run it from cron every hour. It only works inside the window (default **00:00–06:00 Europe/Zurich**, also across DST changes) and stops starting new requests at the end of it. Outside the window it exits immediately and silently. A lock file keeps two runs from overlapping.
+- **Same results as the page:** it loads the prompt, schema, validation and change detection from the board's own `flowboard.html`, so nightly scores look exactly like ones from **✨ Evaluate** and are not shown as "changed". It sends the same data per task. Answers that fail validation are skipped. A connection or model error ends that night's run.
+- **Safe writes:** before each write it loads the current board, changes only `motivation` and `updatedAt` on that one task, and reads the result back. If a browser saved at the same moment, it retries. Edits made at night in a browser are kept.
+- **Where it runs:** on a machine that reaches both the board and Ollama. It needs Node 18+ and nothing else. It uses the board's master key and plain HTTP to Ollama, so no CORS, certificates or browser are involved.
+
+```
+# crontab -e   (on a machine that reaches both)
+5 * * * *  FB_URL=https://fb.prayforsnow.ch FB_KEY_FILE=$HOME/.flowboard-key OLLAMA=http://ovas01.xtremnet.de:7869 JR_MODEL=qwen3.5:9b node /path/to/tools/jr-nightly.mjs >> $HOME/jr-nightly.log 2>&1
+```
+
+Check first with `--dry-run`, which lists what would be evaluated and sends nothing. `--now` runs once outside the window. `JR_TZ`, `JR_FROM`, `JR_TO` change the window.
 
 ### Pause and resume
 

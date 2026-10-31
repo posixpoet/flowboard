@@ -3,6 +3,7 @@
 ## Unreleased
 
 - 🧭 Joy × Responsibility view: per-task attraction and responsibility estimates (0–100 or unknown, with confidence and reasons) from your own Ollama server, four quadrants with configurable thresholds, a passive Responsibilities list and Recent progress. Evaluation only on request, one task per call, answers validated before they are stored, stale scores marked when a task changes
+- Optional nightly evaluation (`tools/jr-nightly.mjs`, cron, 00:00–06:00 Europe/Zurich) using the page's own prompt, validation and change detection
 - ⏸ Pause / ▶ Resume on tasks, with an optional "where I left off" note
 - Tasks record their last activity and column changes, so a completion stays on record when the task is reopened
 - `flowboard-server.js` port can be set with `PORT=…`
