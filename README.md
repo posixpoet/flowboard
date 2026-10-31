@@ -156,7 +156,7 @@ The scores never change your impact/effort, the Pareto ranking or the 🎯 marks
 
      Open the `http://localhost:…/#key=…` address it prints.
 
-2. **⚙ Settings → Joy × Responsibility (Ollama):** set the address, for example `http://ovas01.xtremnet.de:7869`. Press **↻ Load models**, choose a model and press **Save**. The list comes from the server's `/api/tags`. Embedding-only models are left out. FlowBoard never switches the model by itself: if the saved model disappears from the server, it says so and asks you to choose again.
+2. **⚙ Settings → Joy × Responsibility (Ollama):** set the address. It is prefilled with `http://ovas01.xtremnet.de:7869`, or with the HTTPS proxy `https://ovas01.xtremnet.de:7870` when the board itself is served over HTTPS. Press **↻ Load models**, choose a model and press **Save**. The list comes from the server's `/api/tags`. Embedding-only models are left out. FlowBoard never switches the model by itself: if the saved model disappears from the server, it says so and asks you to choose again.
 
 3. **🧭 → ✨ Evaluate unrated → Start.** The first request can take a while because the model has to load (timeout: 3 minutes per task). For models that report the *thinking* capability, FlowBoard sends `think: false`. Two scores don't need a long hidden monologue, and it saves minutes per task.
 

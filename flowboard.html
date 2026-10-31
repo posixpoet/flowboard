@@ -3442,7 +3442,8 @@ function drawParetoChart(){
    and responsibility (consequences of neglect). Evaluation only on an explicit click, one task per request,
    validated before anything is stored. The scores never feed impact/effort, the Pareto ranking, reminders or
    anything else that acts on its own: this view only shows. */
-const JR_DEFAULT_URL='http://ovas01.xtremnet.de:7869';
+/* an https:// page cannot call plain http:// (mixed content), so it starts with the HTTPS reverse proxy in front of the same Ollama */
+const JR_DEFAULT_URL=location.protocol==='https:'?'https://ovas01.xtremnet.de:7870':'http://ovas01.xtremnet.de:7869';
 const JR_LS={url:'flowboard.ollama.url',model:'flowboard.ollama.model',think:'flowboard.ollama.think',open:'flowboard.jr.open'};
 const JR_TIMEOUT=180000; /* the first request after a while also loads the model */
 const JR_PROMPT=`You are FlowBoard's personal task motivation
