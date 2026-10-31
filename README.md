@@ -1,5 +1,15 @@
 # FlowBoard
 
+> **This is `flowboard-personal`**, a personal copy of [anasachouri/flowboard](https://github.com/anasachouri/flowboard) (via [posixpoet/flowboard](https://github.com/posixpoet/flowboard)). Everything below the next section is the upstream README and still applies. What this copy adds:
+>
+> - **🧭 Joy × Responsibility**: an AI view that estimates, for each open task, how engaging it looks and what happens if it is neglected, using your own Ollama server. See [the section below](#joy--responsibility-personal-addition).
+> - **⏸ Pause / ▶ Resume** on tasks with an optional "where I left off" note.
+> - **Recent progress** built from completions, column moves and logged time. Completions stay on record when a task is reopened.
+> - ISO 8601 dates and a 24-hour time picker, and due badges counting days left (the open upstream PR `iso-dates-24h-time`).
+> - `flowboard-server.js` accepts `PORT=…` when 8765 is taken.
+>
+> **Keeping up with upstream:** `git remote add upstream https://github.com/anasachouri/flowboard.git`, then `git fetch upstream && git merge upstream/main`. The additions are concentrated in a few clearly marked blocks of `flowboard.html`, so merges stay small.
+
 A kanban board that fits in one file. Drag tasks between columns, run a pomodoro timer on them, see which tasks are worth your time, work on the same board with a friend, talk to them over video and chat, all inside the board. No account to create, no software to install, nothing to pay.
 
 **[Try it in your browser](https://anasachouri.github.io/flowboard/)** (nothing is uploaded, it runs entirely on your device) or read on to host your own for free.
@@ -96,6 +106,88 @@ Click 🎯 in the header. Tasks are listed from best value to worst. "Value" is 
 The best 20% get a small 🎯 on their card on the board.
 
 ![The Pareto view with a goal, duel and AI rank](docs/pareto.png)
+
+## Joy × Responsibility (personal addition)
+
+Click 🧭 in the header. Each open task gets two separate estimates from a model on **your own Ollama server**:
+
+- **Attraction (0 to 100):** how engaging the task is likely to be, based on curiosity, challenge, problem-solving and room to explore.
+- **Responsibility (0 to 100):** what neglecting it would cost, based on stated obligations, real deadlines and their consequences, risks, and people or tasks that depend on it.
+
+The two are never combined into one number. Either can be *unknown* (`null`) when the task says too little. An unknown score is never treated as zero. Each score has a confidence level (low / medium / high) and a one-sentence reason. Click **ⓘ why** on a card to see them.
+
+Tasks fall into four groups (the thresholds default to 50 and can be changed in ⚙ Settings, a score at or above the threshold counts as high):
+
+| | Lower attraction | Higher attraction |
+|---|---|---|
+| **Higher responsibility** | Responsibilities | Engaging & Important |
+| **Lower responsibility** | Low signal | Exploration |
+
+Tasks not evaluated yet, or with an unknown score, are listed separately under the grid. The Kanban board always shows every task, rated or not. The board's search and filters apply to the grid.
+
+Below the grid:
+
+- **Responsibilities** lists every open task that is high on responsibility and low on attraction. Each row shows both scores, the due date, the last activity and an Open / Resume button. It shows; it never asks for anything: no pop-ups, reminders, warnings, escalation or nudges, however long a task sits there. Collapse it and it stays collapsed on that device.
+- **Recent progress** shows completions (last 30 days), column moves (last 14 days) and logged time (last 7 days). It is built only from what the board already records. Nothing to fill in, and no score.
+
+### What is sent, and when
+
+Nothing is sent until you click **✨ Evaluate** on a task, or **✨ Evaluate unrated**. The bulk button says how many tasks it will send and asks you to confirm. Each request contains **one** task: today's date, title, notes (first 2000 characters), label names, due date, subtask texts, and the impact rating if you set one yourself. It never includes other tasks, the creation date or the column. Requests run one at a time, show progress and can be cancelled. Every finished evaluation is saved straight away, and a failed request does not undo the others.
+
+The model gets a fixed system prompt and the task as JSON marked as untrusted data, with `stream: false`, `temperature: 0.2` and a JSON schema in `format`. The answer is validated strictly: scores must be whole numbers from 0 to 100 or `null`, confidence must be low, medium or high. An answer that breaks these rules is rejected as a whole and nothing is stored. Values are never clamped or guessed.
+
+### Stale scores, and what the scores never touch
+
+When the title, notes, labels, subtasks or due date change, the scores stay visible but are drawn dashed and marked "changed". Moving a task, ticking a subtask or pausing does not count as a change. **Evaluate unrated** sends tasks that were never evaluated plus changed ones, and skips the rest.
+
+The scores never change your impact/effort, the Pareto ranking or the 🎯 marks. Scores and reasons are stored on the task (`task.motivation`), so they sync, back up and restore with the board. The Ollama address, the model choice and collapsed sections are kept per browser (`localStorage`).
+
+### Setting it up with your Ollama server
+
+1. **Open FlowBoard from an origin Ollama accepts.** Ollama only answers browsers whose page origin is allowed. By default that is `http://localhost` and `http://127.0.0.1` on any port, plus `file://`.
+   - **Chrome / Edge, double-clicked `flowboard.html`:** works. These browsers send `Origin: file://`.
+   - **Firefox, double-clicked file:** refused. Firefox sends `Origin: null`. Don't add `null` to `OLLAMA_ORIGINS`: any sandboxed page could then use your Ollama.
+   - **Any browser via the local server:** works:
+
+     ```
+     node flowboard-server.js              # or start-flowboard.bat on Windows
+     PORT=8766 node flowboard-server.js    # if port 8765 is already taken
+     ```
+
+     Open the `http://localhost:…/#key=…` address it prints.
+
+2. **⚙ Settings → Joy × Responsibility (Ollama):** set the address, for example `http://ovas01.xtremnet.de:7869`. Press **↻ Load models**, choose a model and press **Save**. The list comes from the server's `/api/tags`. Embedding-only models are left out. FlowBoard never switches the model by itself: if the saved model disappears from the server, it says so and asks you to choose again.
+
+3. **🧭 → ✨ Evaluate unrated → Start.** The first request can take a while because the model has to load (timeout: 3 minutes per task). For models that report the *thinking* capability, FlowBoard sends `think: false`. Two scores don't need a long hidden monologue, and it saves minutes per task.
+
+**Other origins** (a phone on the Wi-Fi at `http://192.168.x.x:8765`, your hosted board) must be added to `OLLAMA_ORIGINS` on the machine running Ollama, comma separated, for example:
+
+```
+# systemd:  sudo systemctl edit ollama   then add
+[Service]
+Environment="OLLAMA_ORIGINS=http://192.168.0.20:8765,https://board.example.com"
+
+# docker:   docker run … -e OLLAMA_ORIGINS="http://192.168.0.20:8765,https://board.example.com" ollama/ollama
+```
+
+Restart Ollama afterwards. Avoid `*` and `null`: they let any web page you visit use your Ollama.
+
+**FlowBoard served over HTTPS** (the Cloudflare deploy or any `https://` address) cannot call a plain `http://` Ollama. Browsers block that as mixed content, and FlowBoard says so instead of trying. Put Ollama behind an HTTPS reverse proxy and enter the `https://` address in Settings. With Caddy, which already runs on the Ollama host in this setup, a separate port is enough:
+
+```
+# Caddyfile on the Ollama host: HTTPS on port 7870 in front of Ollama on 7869
+ovas01.xtremnet.de:7870 {
+    reverse_proxy 127.0.0.1:7869
+}
+```
+
+Then add the board's origin (for example `https://flowboard.yourname.workers.dev`) to `OLLAMA_ORIGINS`: the proxy passes the `Origin` header through and Ollama still checks it. Keep the proxy reachable only on your own network. Ollama has no login of its own. When an HTTPS page on the internet calls an address on your local network, recent Chrome versions ask once for permission to access local network devices. Allow it for your board. This reverse proxy is not part of this repository and does not exist yet; set it up only if you use the HTTPS board.
+
+Without Ollama, or offline, everything else works as before. The 🧭 view still shows the stored scores, and Evaluate reports what went wrong (server unreachable, origin refused, mixed content, model missing, invalid answer).
+
+### Pause and resume
+
+In a task, **⏸ Pause** banks any running timer time on the task and marks it paused. The pomodoro itself keeps running, so you can attach it to something else. The card shows ⏸, and the optional **Where I left off** note appears in its tooltip and in the Responsibilities list. Opening the task again shows the note and a **▶ Resume** button. Starting its timer or moving it also resumes it. Nothing has to be filled in to switch tasks. The pomodoro stays optional.
 
 ## Your data
 
