@@ -3474,6 +3474,15 @@ Estimate how personally engaging the task is.
 RESPONSIBILITY
 Estimate the consequences of neglecting the task.
 
+The user has stated that incidents are critical.
+When the task data shows the task is an incident
+(the title, description or a label calls it an incident,
+or describes an outage, failure or security breach
+that is happening or has happened), score responsibility
+at least 85 with high confidence and say in the reason
+that it is an incident. Do not treat a task as an incident
+without such evidence. This rule does not change attraction.
+
 Score independently from 0 to 100.
 
 Never combine the scores.
@@ -3529,8 +3538,9 @@ function jrInput(t){
     subtasks:(t.subtasks||[]).map(s=>String(s.text||'').slice(0,200)).slice(0,30),
     user_rated_impact_1_to_5:(t.impactSet&&!t.impactDuel)?t.impact:null};
 }
+/* the prompt is part of the hash: changing the rules marks earlier scores as "changed" so they get re-evaluated */
 function jrHash(input){
-  const s=JSON.stringify(input);let h=0x811c9dc5;
+  const s=JR_PROMPT+JSON.stringify(input);let h=0x811c9dc5;
   for(let i=0;i<s.length;i++){h^=s.charCodeAt(i);h=Math.imul(h,0x01000193)>>>0;}
   return h.toString(16).padStart(8,'0');
 }
