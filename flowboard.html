@@ -3444,7 +3444,7 @@ function drawParetoChart(){
    anything else that acts on its own: this view only shows. */
 /* an https:// page cannot call plain http:// (mixed content), so it starts with the HTTPS reverse proxy in front of the same Ollama */
 const JR_DEFAULT_URL=location.protocol==='https:'?'https://ovas01.xtremnet.de:7870':'http://ovas01.xtremnet.de:7869';
-const JR_LS={url:'flowboard.ollama.url',model:'flowboard.ollama.model',think:'flowboard.ollama.think',open:'flowboard.jr.open'};
+const JR_LS={url:'flowboard.ollama.url',model:'flowboard.ollama.model',open:'flowboard.jr.open'};
 const JR_TIMEOUT=180000; /* the first request after a while also loads the model */
 const JR_PROMPT=`You are FlowBoard's personal task motivation
 and responsibility evaluator.
@@ -3583,7 +3583,7 @@ async function ollamaModels(base){
   if(!d||!Array.isArray(d.models))throw jrErr('invalid','The server at '+base+' did not return an Ollama model list.');
   /* chat-capable models only (embedding models cannot answer); older servers do not report capabilities */
   return d.models.filter(m=>m&&typeof m.name==='string'&&m.name&&(!Array.isArray(m.capabilities)||m.capabilities.includes('completion')))
-    .map(m=>({name:m.name,think:Array.isArray(m.capabilities)&&m.capabilities.includes('thinking'),size:(m.details&&m.details.parameter_size)||''}));
+    .map(m=>({name:m.name,size:(m.details&&m.details.parameter_size)||''}));
 }
 /* strict: anything outside the contract rejects the whole answer, nothing is clamped or guessed */
 function validateJr(raw){
@@ -3617,8 +3617,8 @@ async function jrEvaluate(id,signal){
   if(!t0)throw jrErr('gone','The task no longer exists.');
   const input=jrInput(t0),hash=jrHash(input);
   const body={model,stream:false,format:JR_SCHEMA,options:{temperature:0.2},
-    messages:[{role:'system',content:JR_PROMPT},{role:'user',content:JSON.stringify({today:localDateKey(Date.now()),task:input})}]};
-  if(jrStore(JR_LS.think,'')==='1')body.think=false; /* reasoning models: a long hidden monologue adds minutes, not quality, for two scores */
+    messages:[{role:'system',content:JR_PROMPT},{role:'user',content:JSON.stringify({today:localDateKey(Date.now()),task:input})}],
+    think:false}; /* reasoning models would otherwise think for minutes before two scores; models without thinking accept and ignore it */
   const r=await ollamaFetch(ollamaUrl(),'/api/chat',body,signal);
   if(!r.ok){
     const d=await r.json().catch(()=>null),msg=String((d&&d.error)||'');
@@ -3886,12 +3886,7 @@ function saveAiSettings(){
   jrKeep(JR_LS.url,cleanBaseUrl($('#s-ollama-url').value));
   const pick=$('#s-ollama-model').value.trim().slice(0,100);
   /* only what you typed: an empty field keeps the previous model, nothing ever switches automatically */
-  if(pick){
-    const info=jrModelList&&jrModelList.models.find(m=>m.name===pick);
-    if(info)jrKeep(JR_LS.think,info.think?'1':'0');
-    else if(pick!==ollamaModel())jrKeep(JR_LS.think,''); /* capability unknown for a typed name: send no think option */
-    jrKeep(JR_LS.model,pick);
-  }
+  if(pick)jrKeep(JR_LS.model,pick);
   const f=(v,d)=>{v=parseInt(v,10);return v>=1&&v<=100?v:d;};
   state.settings.jrAttr=f($('#s-jr-attr').value,50);
   state.settings.jrResp=f($('#s-jr-resp').value,50);
