@@ -82,6 +82,26 @@ Calls are **peer to peer**. The only server piece is a small signalling room per
 
 On the client (`video call` section in `flowboard.html`): one `RTCPeerConnection` per other participant (mesh), using the W3C **perfect negotiation** pattern so both sides can renegotiate safely (screen share swaps the outgoing video track with `replaceTrack`, a participant without a camera still receives). The presence heartbeat carries `inCall`, which is how everyone else on the board gets the **Join / Not now** banner, the chime and the pulsing header button (a `peer-joined` on an open chat socket triggers an immediate heartbeat so the ring is near-instant). A `#call=<boardId>` link opens that board and shows the Join banner. Media never leaves the browsers, nothing is recorded.
 
+## Joy × Responsibility (personal motivation view, local Ollama)
+
+A fourth view next to Board, Analytics and Pareto (⚖ in the header). Each open task can carry two **independent** scores, 0–100 or `null`:
+
+- **attraction**: how likely the task is to engage this user (curiosity, challenge, interesting problems, discovery, enjoyment)
+- **responsibility**: consequences of neglecting it (commitments, real deadlines, dependencies on people or systems)
+
+They are never averaged. Categories use two thresholds (default 50/50, `state.settings.joy.ta/tr`): Engaging & Important, Exploration, Responsibilities, Low signal. A task without both scores (never evaluated, or the model said there is not enough information) is listed under Unrated; a valid high responsibility score there is flagged.
+
+**Storage.** `task.joy = {v, attraction:{score,confidence,why}, responsibility:{…}, model, at, h, prev, touched}` sits next to, never inside, `impact`/`effort`/`elo`, so Pareto and duels are unaffected. `h` is a hash of the evaluated content (title, description, labels, due, subtask titles, assignees, estimate); a different hash marks the evaluation as "changed since evaluation" without re-running anything. `prev`/`touched` keep "last activity" sorting from counting the evaluation itself as activity. Settings (`model`, thresholds, sort per section, collapsed sections, one-time consent) are in `state.settings.joy` and travel with exports like the other settings (per device, not synced).
+
+**Ollama bridge.** The page never calls Ollama: an `https` page cannot call `http://…:7869` (mixed content) and Ollama would need CORS. `flowboard-server.js` proxies instead, behind the board key:
+
+- `GET /api/ai/models` → Ollama `GET /api/tags` (cached 60 s, `?refresh=1` forces)
+- `POST /api/ai/joy {model, tasks[≤8]}` → Ollama `POST /api/chat`, `stream:false`, JSON-schema `format` (falls back once to `format:"json"` if the schema is rejected), `OLLAMA_THINK`/`OLLAMA_NUM_CTX`/`OLLAMA_TIMEOUT_S` as for AI rank
+
+The server checks the model against `/api/tags`, wraps task data in a `<TASKS>` block marked as data (prompt-injection hygiene), and validates every answer: integer 0–100 or `null`, confidence `low|medium|high`, invented or duplicate task numbers dropped, missing tasks reported. The client validates again before storing and sends at most 4 tasks per request so long runs stay under proxy timeouts and can be stopped. `OLLAMA_URL` defaults to `http://ovas01.xtremnet.de:7869`. The Cloudflare Worker has no bridge; the view then shows stored scores only.
+
+**Not implemented on purpose.** No automatic evaluation, reminders, pop-ups, streaks or task-age escalation. Behavioural learning is a later step: voluntary picks, resumes (`timeLog`), postponements and completions (`doneAt`) can already be derived from existing data, but any learned signal should be stored apart from `task.joy` and shown as its own hint, because starting a task does not prove enjoyment and finishing one does not prove attraction.
+
 ## Security model
 
 **Personal:** Every `/api/state` call must carry the board key (`x-board-key` or `?key=` for beacons). Cloudflare stores the master key as a secret (`set-key.bat`). Guests get scoped invite keys (board ids only). `#key=` in the URL fragment is not sent to servers as a normal query, the app stores it in localStorage.

@@ -331,6 +331,33 @@ h3.sec{font-size:13px;text-transform:uppercase;letter-spacing:.4px;color:var(--m
 
 /* ---------- pareto ---------- */
 .prow{display:flex;align-items:center;gap:10px;padding:7px 8px;border-radius:7px;margin-bottom:4px;background:var(--cell)}
+/* Joy × Responsibility */
+.joy-modal{width:min(980px,96vw)}
+.joy-tools{display:flex;flex-wrap:wrap;gap:8px;align-items:center;margin:6px 0}
+.joy-tools select{max-width:240px}
+.joy-th{font-size:12px;color:var(--muted);margin-left:auto}
+.joy-th input{width:58px}
+#j-status{min-height:1.2em;font-size:13px;margin:4px 0}
+.jsec{margin-top:10px;border-top:1px solid var(--border);padding-top:6px}
+.jsec-h{display:flex;align-items:center;gap:8px;cursor:pointer;user-select:none;padding:2px 0}
+.jsec-h .tw{width:12px;color:var(--muted)}
+.jsec-h .cnt{color:var(--muted);font-size:12px}
+.jsec-h .hint{color:var(--muted);font-size:12px;flex:1;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.jsec-h select{font-size:12px;padding:2px 4px;width:auto}
+.jrow{display:flex;align-items:flex-start;gap:10px;padding:7px 8px;border-radius:7px;margin:4px 0;background:var(--cell)}
+.jrow .jmain{flex:1;min-width:0}
+.jrow .nm{cursor:pointer;font-weight:600;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;display:block}
+.jrow .why{font-size:12px;color:var(--muted);margin-top:2px}
+.jrow .jact{display:flex;gap:4px;flex:none}
+.jchip{display:inline-flex;gap:4px;align-items:center;font-variant-numeric:tabular-nums;min-width:62px;font-size:13px;white-space:nowrap;padding-top:2px}
+.jchip b{color:var(--muted);font-weight:600}
+.jchip.null{color:var(--muted)}
+.jconf{font-style:normal;font-size:10px;font-weight:700;border-radius:3px;padding:0 4px;background:var(--chip);color:var(--muted)}
+.jconf.c-high{background:color-mix(in srgb,var(--accent) 30%,var(--chip));color:var(--text)}
+.jflag{font-size:11px;color:var(--muted);margin-right:10px;white-space:nowrap}
+.jflag.warn{color:var(--danger)}
+.tjoy-row{display:flex;gap:8px;align-items:center;flex-wrap:wrap}
+@media (max-width:640px){.jrow{flex-wrap:wrap}.jrow .jmain{flex-basis:100%}.joy-th{margin-left:0}}
 .prow.top{outline:2px solid var(--accent)}
 .prow .bar{height:8px;border-radius:4px;background:var(--accent)}
 .prow .nm{flex:1;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
@@ -496,6 +523,7 @@ kbd{background:var(--chip);border:1px solid var(--border);border-radius:4px;padd
     <button class="ghost" id="pomo-mode" title="Toggle pomodoro / stopwatch">🍅</button>
   </div>
   <button id="btn-pareto" title="Pareto prioritisation">🎯</button>
+  <button id="btn-joy" title="Joy × Responsibility: what engages you, and what must stay visible">⚖</button>
   <button id="btn-admin" style="display:none" title="Approve / revoke accounts">Admin console</button>
   <button id="btn-logout" style="display:none" title="Log out">Log out</button>
   <div class="menu-wrap">
@@ -683,6 +711,8 @@ kbd{background:var(--chip);border:1px solid var(--border);border-radius:4px;padd
         <b id="t-time">0h 0m</b>
         <input type="number" id="t-addtime" min="1" placeholder="+min" style="width:70px"><button id="t-addtime-btn">Add</button>
       </div>
+      <label class="flabel">Joy × Responsibility</label>
+      <div id="t-joy"></div>
     </div>
   </div>
   <div class="actions">
@@ -721,6 +751,22 @@ kbd{background:var(--chip);border:1px solid var(--border);border-radius:4px;padd
   </div>
   <div id="p-duelbox" style="display:none"></div>
   <div id="pareto-list"></div>
+</div></div>
+
+<!-- Joy × Responsibility -->
+<div class="overlay" id="ov-joy"><div class="modal joy-modal">
+  <h2>⚖ Joy × Responsibility<button class="ghost x" data-close>✕</button></h2>
+  <p class="mut">Two independent scores from your own model: <b>attraction</b> (how likely a task is to engage you) and <b>responsibility</b> (what happens if it is left). They are never combined. Nothing is sent until you click Evaluate, and nothing here changes your columns, impact or effort.</p>
+  <div class="joy-tools">
+    <label class="mut" for="j-model">Model</label><select id="j-model"></select>
+    <button class="ghost" id="j-refresh" title="Reload the model list from Ollama">↻</button>
+    <button id="j-eval-unrated">Evaluate unrated</button>
+    <button id="j-eval-stale">Re-evaluate changed</button>
+    <button id="j-cancel" style="display:none">Stop</button>
+    <span class="joy-th">High from <input type="number" id="j-ta" min="1" max="100" title="Attraction threshold"> attraction · <input type="number" id="j-tr" min="1" max="100" title="Responsibility threshold"> responsibility</span>
+  </div>
+  <div id="j-status" class="mut"></div>
+  <div id="joy-list"></div>
 </div></div>
 
 <!-- Archive -->
@@ -802,6 +848,7 @@ kbd{background:var(--chip);border:1px solid var(--border);border-radius:4px;padd
   <p><b>Collaboration:</b> the easiest way is invite links (see below). There is also file-based sync. Put a sync file in a shared folder (Dropbox / Google Drive / OneDrive) via ⋯ → <b>Create shared sync file…</b> and have friends use <b>Join existing sync file…</b> to pick the same file. It is last-save-wins (not simultaneous live editing) and it needs Chrome or Edge. All boards are shared in that mode.</p>
   <p><b>Deadlines in your calendar 📆:</b> ⋯ → "Deadlines → calendar" downloads an.ics file of every open task with a due date (import it into any calendar app). If you use the online (Cloudflare) version, you also get a live subscription URL. In Google Calendar go to Settings → Add calendar → From URL and paste it. Do that in whichever Google account you want the deadlines in (work, personal, or both). Each account you add it to stays automatically up to date.</p>
   <p><b>Pareto 🎯:</b> ranks open tasks by impact ÷ effort and marks the top 20% with 🎯 on their cards. You can score tasks yourself, but you don't have to: effort falls back to the estimate or to the actual time of similar finished tasks, impact gets a nudge from a close deadline, <b>⚔ Duel</b> asks "which matters more?" a few times and learns a ranking from your answers, and <b>✨ AI rank</b> scores every open task against the goal you type at the top (a model on Cloudflare, called only when you click, nothing stored). Column menu ⌄ → <b>Sort by value</b> reorders a column by the same score. Analytics shows a true Pareto chart of where your tracked hours went.</p>
+  <p><b>Joy × Responsibility ⚖:</b> two independent scores per open task from your own Ollama model, never combined: <b>attraction</b> (how likely the task is to engage you) and <b>responsibility</b> (what happens if it is left). Tasks fall into Engaging &amp; Important, Exploration, Responsibilities (stays visible, collapsible) and Low signal; tasks without both scores sit under Unrated. Pick a model at the top, then <b>Evaluate unrated</b>, or ↻ on a single task. Nothing is sent until you click, nothing is re-evaluated by itself, and impact, effort, duels and columns are never changed. Thresholds (default 50) and sorting are per section. Needs the self-hosted server with <code>OLLAMA_URL</code>.</p>
   <p><b>Members & assignees 👥:</b> add people in ⋯ → Board members (simple name tags, no accounts). Assign them to tasks in the task dialog. Their initials show on cards, and the header dropdown filters by person.</p>
   <p><b>Inviting friends 🔗:</b> switch to the board you want to share, then ⋯ → Board members → Invite links. Type a friend's name and click "Create invite link". They get their own private link (your key is never shared) with access to <b>that board only</b>. Your other boards stay invisible to them, on screen and on the server. Revoke any link at any time. It stops working within seconds without affecting anyone else.</p>
   <p><b>Video calls 📹:</b> on a live-synced board, click 📹 in the header, then <b>Start call</b>. Everyone else who has the board open gets a ring, a banner with <b>Join</b> / <b>Not now</b>, and a pulsing 📹 button. The 👥 tab shows who is on the board (in call, online, away) with <b>Copy call link</b>: send that link on WhatsApp or email and it opens the board with a Join banner. On a SaaS deploy there is also <b>Email invite</b> for board members. Audio and video travel directly between your browsers (WebRTC), nothing is recorded or stored. Drag the window anywhere, collapse it and keep working on the board together, share your screen with 🖥, or double-click a video for full screen. If a connection stays on "connecting" or shows "failed", one of you is behind a strict network: the board owner can add Cloudflare TURN keys (see README).</p>
@@ -1846,7 +1893,7 @@ function openTask(id,colId,laneId){
   board.lanes.forEach(l=>laneSel.append(el('option',{value:l.id,text:laneName(l)})));
   laneSel.value=t.laneId;
   $('#t-lane-wrap').style.display=board.lanes.length>1?'':'none';
-  renderLabelChips(t);renderAssignees(t);renderSubs(t);renderAtts(t);updateTaskHead(t);renderDescLinks();
+  renderLabelChips(t);renderAssignees(t);renderSubs(t);renderAtts(t);updateTaskHead(t);renderDescLinks();joyRenderTask(t);
   const tmBtn=$('#t-timer');
   tmBtn.style.display=(id&&!isTaskDone(t))?'':'none';
   if(id&&!isTaskDone(t)){
@@ -3195,6 +3242,257 @@ function renderParetoList(){
     list.append(row);
   });
 }
+/* ================= Joy × Responsibility =================
+   Two independent scores per task, from the user's own Ollama model through the server bridge (/api/ai/models, /api/ai/joy):
+   attraction = how likely the task is to engage this user, responsibility = consequences of neglecting it. Never combined.
+   Stored on the task as t.joy (separate from impact/effort, so Pareto and duels are untouched); settings in state.settings.joy.
+   Nothing is sent to the model without an explicit click. No reminders, no pop-ups, no automatic re-evaluation.
+   Future learning (not implemented): voluntary picks, resumes, postponements and completions are already derivable from
+   timeLog, doneAt and column history; any learned signal must be stored apart from t.joy and shown as its own hint,
+   because starting a task does not prove enjoyment and finishing one does not prove attraction. */
+const JOY_SECTIONS=[
+  {k:'ei',name:'Engaging & Important',hint:'high attraction · high responsibility',sort:'attr'},
+  {k:'ex',name:'Exploration',hint:'high attraction · low responsibility',sort:'attr'},
+  {k:'re',name:'Responsibilities',hint:'low attraction · high responsibility, kept visible here',sort:'resp'},
+  {k:'lo',name:'Low signal',hint:'low attraction · low responsibility',sort:'order'},
+  {k:'un',name:'Unrated',hint:'not evaluated, or not enough information for both scores',sort:'resp'}];
+const JOY_SORTS={attr:'Attraction',resp:'Responsibility',prio:'Priority (impact ÷ effort)',activity:'Last activity',due:'Due date',order:'Board order'};
+const JOY_BATCH=4;
+let joyModelList=null,joyBusy=null;
+function joyCfg(){
+  const d={model:'',ta:50,tr:50,sort:{},closed:{lo:true},consent:false};
+  let j=state.settings.joy;
+  if(!j||typeof j!=='object'){j=state.settings.joy={};}
+  for(const k in d)if(j[k]===undefined||j[k]===null)j[k]=typeof d[k]==='object'?{...d[k]}:d[k];
+  j.ta=Math.max(1,Math.min(100,Math.round(+j.ta)||50));j.tr=Math.max(1,Math.min(100,Math.round(+j.tr)||50));
+  return j;
+}
+/* exactly what is sent to the model for one task */
+function joyInput(t){
+  return{
+    id:t.id,title:t.title||'',desc:String(t.desc||'').slice(0,800),
+    labels:(t.labels||[]).map(id=>(board.labels.find(l=>l.id===id)||{}).name).filter(Boolean),
+    due:t.due||'',column:(board.columns.find(c=>c.id===t.colId)||{}).name||'',
+    subtasks:(t.subtasks||[]).slice(0,15).map(s=>({title:String(s.text||s.title||''),done:!!s.done})),
+    assignees:(t.assignees||[]).map(id=>(board.members.find(m=>m.id===id)||{}).name).filter(Boolean),
+    est:t.est||0};
+}
+/* cache key: content the scores depend on (moving a card or ticking a subtask does not make an evaluation stale) */
+function joyHash(t){
+  const i=joyInput(t);
+  const s=JSON.stringify([i.title,i.desc,i.labels,i.due,i.subtasks.map(x=>x.title),i.assignees,i.est]);
+  let h=2166136261;for(let k=0;k<s.length;k++){h^=s.charCodeAt(k);h=Math.imul(h,16777619);}
+  return(h>>>0).toString(36);
+}
+function joyScore(d){return d&&typeof d.score==='number'&&isFinite(d.score)&&d.score>=0&&d.score<=100?Math.round(d.score):null;}
+function joyOf(t){return t&&t.joy&&typeof t.joy==='object'?t.joy:null;}
+function joyCat(t,cfg){
+  const j=joyOf(t);if(!j)return'un';
+  const a=joyScore(j.attraction),r=joyScore(j.responsibility);
+  if(a===null||r===null)return'un';
+  const hiA=a>=cfg.ta,hiR=r>=cfg.tr;
+  return hiA&&hiR?'ei':hiA?'ex':hiR?'re':'lo';
+}
+function joyStale(t){const j=joyOf(t);return!!(j&&j.h&&j.h!==joyHash(t));}
+/* last real activity: ignores the edit timestamp an evaluation itself causes */
+function joyLastActivity(t){
+  const j=joyOf(t);
+  let a=(j&&j.touched&&t.updatedAt===j.touched)?(j.prev||0):(t.updatedAt||0);
+  (t.timeLog||[]).forEach(e=>{const d=Date.parse(e&&e.d);if(d>a)a=d;});
+  return Math.max(a,t.createdAt||0,t.doneAt||0)||null;
+}
+function joySorter(key){
+  const order=new Map(board.tasks.map((t,i)=>[t.id,i]));
+  const ord=(a,b)=>(order.get(a.id)||0)-(order.get(b.id)||0);
+  const desc=f=>(a,b)=>{const x=f(a),y=f(b);if(x===null&&y===null)return ord(a,b);if(x===null)return 1;if(y===null)return-1;return y-x||ord(a,b);};
+  if(key==='attr')return desc(t=>joyScore((joyOf(t)||{}).attraction));
+  if(key==='resp')return desc(t=>joyScore((joyOf(t)||{}).responsibility));
+  if(key==='prio')return desc(t=>impactOf(t).v/effortOf(t).v);
+  if(key==='activity')return desc(t=>joyLastActivity(t));
+  if(key==='due')return(a,b)=>{const x=taskDueMs(a),y=taskDueMs(b);if(x==null&&y==null)return ord(a,b);if(x==null)return 1;if(y==null)return-1;return x-y||ord(a,b);};
+  return ord;
+}
+function joyOpenTasks(){return board.tasks.filter(t=>!isDoneCol(t.colId));}
+function joyUnrated(){return joyOpenTasks().filter(t=>!joyOf(t));}
+function joyChanged(){return joyOpenTasks().filter(t=>joyOf(t)&&joyStale(t));}
+/* ---- view ---- */
+function openJoy(){
+  trackFeature('joy_open');
+  const cfg=joyCfg();
+  $('#j-ta').value=cfg.ta;$('#j-tr').value=cfg.tr;
+  joyStatus('');
+  renderJoy();
+  openOv('#ov-joy');
+  joyLoadModels(false);
+}
+function joyStatus(msg){const s=$('#j-status');if(s)s.textContent=msg||'';}
+function joyChip(label,d){
+  const s=joyScore(d),c=(d&&d.confidence)||'low';
+  return el('span',{class:'jchip'+(s===null?' null':''),title:label+': '+(s===null?'no score (not enough information)':s+'/100, '+c+' confidence')+(d&&d.why?'\n'+d.why:'')},
+    el('b',{text:label[0]}),' '+(s===null?'—':s),s===null?null:el('i',{class:'jconf c-'+c,text:c[0].toUpperCase(),title:c+' confidence'}));
+}
+function joyRow(t){
+  const j=joyOf(t),a=j&&j.attraction,r=j&&j.responsibility;
+  const flags=[];
+  if(!j)flags.push(['not evaluated','']);
+  else if(joyScore(a)===null||joyScore(r)===null)flags.push(['not enough information for both scores','']);
+  if(j&&joyStale(t))flags.push(['changed since evaluation','warn']);
+  if(j&&joyCat(t,joyCfg())==='un'&&joyScore(r)!==null&&joyScore(r)>=joyCfg().tr)flags.push(['high responsibility','warn']);
+  const secs=taskTime(t);if(secs)flags.push(['⏱ '+fmtMin(secs)+' logged','']);
+  const di=dueInfo(t);if(di)flags.push(['due '+di.label,di.cls==='due-over'?'warn':'']);
+  const col=(board.columns.find(c=>c.id===t.colId)||{}).name;if(col)flags.push([col,'']);
+  const why=[];
+  if(a&&a.why)why.push('A: '+a.why);
+  if(r&&r.why)why.push('R: '+r.why);
+  return el('div',{class:'jrow'},
+    el('div',{class:'jmain'},
+      el('span',{class:'nm',text:t.title||'Untitled',title:'Open task',onclick:()=>openTask(t.id)}),
+      why.length?el('div',{class:'why',text:why.join(' · ')}):null,
+      el('div',{},...flags.map(([f,c])=>el('span',{class:'jflag'+(c?' '+c:''),text:f})))),
+    joyChip('Attraction',a),joyChip('Responsibility',r),
+    el('div',{class:'jact'},
+      el('button',{class:'ghost',text:'Open',onclick:()=>openTask(t.id)}),
+      el('button',{class:'ghost',text:'▶',title:secs?'Resume: run the timer on this task':'Start the timer on this task',onclick:()=>{attachTimer(t.id);closeOv();}}),
+      el('button',{class:'ghost',text:j?'↻':'Evaluate',title:(j?'Re-evaluate':'Evaluate')+' this task with your Ollama model (sends its title, description, labels, due date, subtasks and assignees)',onclick:()=>joyRun([t])})));
+}
+function renderJoy(){
+  const list=$('#joy-list');if(!list)return;
+  const cfg=joyCfg();
+  list.innerHTML='';
+  const open=joyOpenTasks();
+  const ue=$('#j-eval-unrated'),ce=$('#j-eval-stale');
+  const nU=joyUnrated().length,nC=joyChanged().length;
+  if(ue){ue.textContent='Evaluate unrated ('+nU+')';ue.disabled=!!joyBusy||!nU;}
+  if(ce){ce.textContent='Re-evaluate changed ('+nC+')';ce.disabled=!!joyBusy||!nC;ce.style.display=nC?'':'none';}
+  if(!open.length){list.append(el('p',{class:'mut',text:'No open tasks.'}));return;}
+  const groups={ei:[],ex:[],re:[],lo:[],un:[]};
+  open.forEach(t=>groups[joyCat(t,cfg)].push(t));
+  JOY_SECTIONS.forEach(sec=>{
+    const items=groups[sec.k];
+    if(sec.k==='un'&&!items.length)return;
+    const key=cfg.sort[sec.k]&&JOY_SORTS[cfg.sort[sec.k]]?cfg.sort[sec.k]:sec.sort;
+    items.sort(joySorter(key));
+    const closed=!!cfg.closed[sec.k];
+    const sel=el('select',{title:'Sort this section',onclick:e=>e.stopPropagation(),onchange:e=>{cfg.sort[sec.k]=e.target.value;save();renderJoy();}},
+      ...Object.entries(JOY_SORTS).map(([v,n])=>{const o=el('option',{value:v,text:n});if(v===key)o.selected=true;return o;}));
+    const box=el('div',{class:'jsec jsec-'+sec.k+(closed?' closed':'')},
+      el('div',{class:'jsec-h',onclick:()=>{cfg.closed[sec.k]=!closed;save();renderJoy();}},
+        el('span',{class:'tw',text:closed?'▸':'▾'}),
+        el('b',{text:sec.name}),el('span',{class:'cnt',text:String(items.length)}),
+        el('span',{class:'hint',text:sec.hint}),sel));
+    if(!closed){
+      if(!items.length)box.append(el('p',{class:'mut',text:'Nothing here.'}));
+      items.forEach(t=>box.append(joyRow(t)));
+    }
+    list.append(box);
+  });
+}
+/* ---- models ---- */
+async function joyLoadModels(force){
+  const sel=$('#j-model');if(!sel)return;
+  const cfg=joyCfg();
+  const fill=()=>{
+    sel.innerHTML='';
+    sel.append(el('option',{value:'',text:'— choose a model —'}));
+    (joyModelList||[]).forEach(m=>sel.append(el('option',{value:m.name,text:m.name+(m.params?' · '+m.params:'')})));
+    if(cfg.model&&!(joyModelList||[]).some(m=>m.name===cfg.model))sel.append(el('option',{value:cfg.model,text:cfg.model+(joyModelList?' (not installed)':' (saved)')}));
+    sel.value=cfg.model||'';
+  };
+  fill();
+  if(!serverMode){joyStatus('Offline: evaluations need the FlowBoard server. Saved scores stay visible.');return;}
+  try{
+    const r=await apiFetch('api/ai/models'+(force?'?refresh=1':''),{cache:'no-store'});
+    if(r.status===404)throw new Error('this FlowBoard server has no Ollama bridge (update flowboard-server.js and restart it)');
+    const d=r.ok?await r.json().catch(()=>null):null;
+    if(!d||!d.ok)throw new Error((d&&d.err)||('HTTP '+r.status));
+    joyModelList=d.models||[];
+    fill();
+    if(!joyModelList.length)joyStatus('Ollama has no models installed.');
+    else if(!cfg.model)joyStatus('Choose a model, then evaluate.');
+    else if(!joyModelList.some(m=>m.name===cfg.model))joyStatus('Your saved model "'+cfg.model+'" is no longer installed. Choose another.');
+  }catch(e){
+    joyModelList=null;fill();
+    joyStatus('Model list unavailable: '+(e.message||e)+'. Saved scores stay visible.');
+  }
+}
+/* ---- evaluation ---- */
+function joyStore(t,res,model){
+  const clean=d=>{const s=joyScore(d);const c=d&&['low','medium','high'].includes(d.confidence)?d.confidence:'low';return{score:s,confidence:s===null?'low':c,why:String((d&&d.why)||'').slice(0,200)};};
+  const old=joyOf(t);
+  const prev=(old&&old.touched&&t.updatedAt===old.touched)?(old.prev||0):(t.updatedAt||0);
+  t.joy={v:1,attraction:clean(res.attraction),responsibility:clean(res.responsibility),model:String(model||''),at:Date.now(),h:joyHash(t),prev};
+  touchTask(t);t.joy.touched=t.updatedAt;
+}
+async function joyRun(tasks,statusFn){
+  const say=statusFn||joyStatus;
+  const cfg=joyCfg();
+  tasks=tasks.filter(t=>t&&board.tasks.includes(t));
+  if(joyBusy){say('An evaluation is already running.');return;}
+  if(!serverMode){say('Offline: evaluations need the FlowBoard server.');return;}
+  if(!cfg.model){say('Choose a model in ⚖ Joy × Responsibility first.');return;}
+  if(!tasks.length){say('Nothing to evaluate.');return;}
+  const what='title, description (first 800 characters), labels, due date, column, subtasks and assignees';
+  if(!cfg.consent){
+    if(!confirm('Evaluate with your local model?\n\nFlowBoard sends each task\'s '+what+' through your FlowBoard server to the Ollama model "'+cfg.model+'". Nothing is sent anywhere else, and nothing is sent unless you click Evaluate.\n\nThis question is asked once.'))return;
+    cfg.consent=true;save();
+  }else if(tasks.length>1&&!confirm('Send '+tasks.length+' tasks to "'+cfg.model+'" for evaluation?'))return;
+  joyBusy={stop:false};
+  const cancel=$('#j-cancel');if(cancel)cancel.style.display='';
+  renderJoy();
+  let done=0,nulls=0,missed=0,err='';
+  try{
+    for(let i=0;i<tasks.length&&!joyBusy.stop;i+=JOY_BATCH){
+      const batch=tasks.slice(i,i+JOY_BATCH);
+      say('Evaluating '+(tasks.length>1?(i+1)+'–'+(i+batch.length)+' of '+tasks.length+' ':'')+'with '+cfg.model+'…');
+      let d=null;
+      try{
+        const r=await apiFetch('api/ai/joy',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({model:cfg.model,tasks:batch.map(joyInput)})});
+        if(r.status===404)d={ok:false,err:'this FlowBoard server has no Ollama bridge (update flowboard-server.js and restart it)'};
+        else d=r.ok?await r.json().catch(()=>null):{ok:false,err:'HTTP '+r.status};
+      }catch(e){d={ok:false,err:'network error, the FlowBoard server is not reachable'};}
+      if(!d||!d.ok){err=(d&&d.err)||'unknown error';break;}
+      (d.results||[]).forEach(res=>{
+        const t=board.tasks.find(x=>x.id===res.id);if(!t)return;
+        joyStore(t,res,d.model);done++;
+        if(joyScore(t.joy.attraction)===null||joyScore(t.joy.responsibility)===null)nulls++;
+      });
+      missed+=(d.missing||[]).length;
+      save();renderJoy();
+      if(editing&&editing.task&&$('#ov-task').classList.contains('open'))joyRenderTask(editing.task);
+    }
+  }finally{
+    const stopped=joyBusy&&joyBusy.stop;
+    joyBusy=null;if(cancel)cancel.style.display='none';
+    renderJoy();
+    const parts=[];
+    if(done)parts.push('Evaluated '+done+' task'+(done>1?'s':'')+' with '+cfg.model+'.');
+    if(nulls)parts.push(nulls+' without enough information for both scores (listed under Unrated).');
+    if(missed)parts.push(missed+' skipped by the model, still unrated.');
+    if(stopped)parts.push('Stopped.');
+    if(err)parts.push('Evaluation failed: '+err+'.');
+    say(parts.join(' ')||'Nothing evaluated.');
+  }
+}
+/* ---- task window field ---- */
+function joyRenderTask(t){
+  const box=$('#t-joy');if(!box)return;
+  box.innerHTML='';
+  const j=joyOf(t);
+  const status=el('div',{class:'mut',style:'font-size:12px;margin-top:4px'});
+  const row=el('div',{class:'tjoy-row'},joyChip('Attraction',j&&j.attraction),joyChip('Responsibility',j&&j.responsibility));
+  const isNew=!!(editing&&editing.isNew&&editing.task===t);
+  row.append(el('button',{class:'ghost',text:j?'↻ Re-evaluate':'Evaluate',disabled:isNew?'':null,
+    title:isNew?'Save the task first':'Send this task (saved version) to your Ollama model',
+    onclick:()=>joyRun([t],m=>{status.textContent=m;})}));
+  if(isNew)row.lastChild.disabled=true;else row.lastChild.removeAttribute('disabled');
+  box.append(row);
+  const why=[];
+  if(j&&j.attraction&&j.attraction.why)why.push('A: '+j.attraction.why);
+  if(j&&j.responsibility&&j.responsibility.why)why.push('R: '+j.responsibility.why);
+  if(why.length)box.append(el('div',{class:'mut',style:'font-size:12px',text:why.join(' · ')}));
+  if(j&&joyStale(t))box.append(el('div',{class:'jflag warn',text:'changed since evaluation'}));
+  box.append(status);
+}
 /* ---- duels: "which matters more?" a few times, Elo rating, mapped back to impact 1 to 5 ---- */
 let duel=null;
 function eloOf(t){return typeof t.elo==='number'?t.elo:1000+(((t.impactSet||t.impactAi)?(t.impact||3):3)-3)*120;}
@@ -4307,6 +4605,13 @@ function bind(){
   $('#m-dark').onclick=()=>{state.settings.dark=!state.settings.dark;save();applyTheme();trackFeature('dark_mode');$('#menu').classList.remove('open');};
   $('#m-analytics').onclick=()=>{openAnalytics();$('#menu').classList.remove('open');};
   $('#btn-pareto').onclick=openPareto;
+  $('#btn-joy').onclick=openJoy;
+  $('#j-model').onchange=e=>{joyCfg().model=e.target.value;save();joyStatus(e.target.value?'Model saved.':'');};
+  $('#j-refresh').onclick=()=>joyLoadModels(true);
+  $('#j-eval-unrated').onclick=()=>joyRun(joyUnrated());
+  $('#j-eval-stale').onclick=()=>joyRun(joyChanged());
+  $('#j-cancel').onclick=()=>{if(joyBusy){joyBusy.stop=true;joyStatus('Stopping after the current batch…');}};
+  ['j-ta','j-tr'].forEach(id=>{$('#'+id).onchange=e=>{const c=joyCfg(),v=Math.max(1,Math.min(100,Math.round(+e.target.value)||50));c[id==='j-ta'?'ta':'tr']=v;e.target.value=v;save();renderJoy();};});
   $('#btn-menu').onclick=e=>{
     e.stopPropagation();
     const m=$('#menu');
